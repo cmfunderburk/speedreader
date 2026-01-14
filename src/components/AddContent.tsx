@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Readability } from '@mozilla/readability';
 import type { Article } from '../types';
 
 interface AddContentProps {
@@ -41,18 +42,19 @@ export function AddContent({ onAdd, onClose }: AddContentProps) {
       // Parse with DOMParser
       const doc = new DOMParser().parseFromString(html, 'text/html');
 
-      // Try to extract using simple heuristics
-      // In a real app, we'd use @mozilla/readability here
-      const articleTitle = doc.querySelector('h1')?.textContent
-        || doc.querySelector('title')?.textContent
-        || 'Untitled';
+      // Use Readability for clean extraction
+      const reader = new Readability(doc);
+      const article = reader.parse();
 
-      const articleContent = extractArticleContent(doc);
+      if (!article || !article.textContent) {
+        throw new Error('Could not extract article content');
+      }
+
       const articleSource = new URL(url).hostname.replace('www.', '');
 
       onAdd({
-        title: articleTitle.trim(),
-        content: articleContent,
+        title: article.title || 'Untitled',
+        content: article.textContent.trim(),
         source: articleSource,
         url,
       });
@@ -79,18 +81,12 @@ export function AddContent({ onAdd, onClose }: AddContentProps) {
 
   const speedReadUrl = getSpeedReadUrl();
 
-  // Bookmarklet opens SpeedRead and sends data via postMessage
-  // Uses smarter extraction to skip junk and preserve paragraph structure
+  // Bookmarklet opens SpeedRead and sends the page HTML for proper Readability extraction
   const bookmarkletCode = `javascript:(function(){
     const title = document.querySelector('h1')?.innerText || document.title;
-    const article = document.querySelector('article') || document.querySelector('[role="article"]') || document.querySelector('main') || document.body;
-    const clone = article.cloneNode(true);
-    ['nav','header','footer','aside','figure','figcaption','button','[role="navigation"]','[role="complementary"]','.share','.social','.related','.comments','.advertisement','.ad','script','style','svg','iframe'].forEach(s=>{clone.querySelectorAll(s).forEach(e=>e.remove())});
-    const paragraphs = [];
-    clone.querySelectorAll('p').forEach(p=>{const t=p.innerText.trim();if(t.length>50)paragraphs.push(t)});
-    const content = paragraphs.length>3 ? paragraphs.join('\\n\\n') : clone.innerText.replace(/\\n{3,}/g,'\\n\\n').trim();
     const source = location.hostname.replace('www.', '');
-    const data = {type:'speedread-article', title, content, source, url: location.href};
+    const html = document.documentElement.outerHTML;
+    const data = {type:'speedread-article-html', title, html, source, url: location.href};
     const w = window.open('${speedReadUrl}?import=1', 'speedread');
     if(w){
       const send = () => w.postMessage(data, '${speedReadUrl}');
@@ -105,7 +101,36 @@ export function AddContent({ onAdd, onClose }: AddContentProps) {
   // Listen for postMessage from bookmarklet
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Verify origin if needed - for localhost dev, accept all
+      // Handle HTML content - run Readability for clean extraction
+      if (event.data?.type === 'speedread-article-html') {
+        try {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(event.data.html, 'text/html');
+
+          // Run Readability to extract clean article content
+          const reader = new Readability(doc);
+          const article = reader.parse();
+
+          if (article && article.textContent) {
+            onAdd({
+              title: article.title || event.data.title,
+              content: article.textContent.trim(),
+              source: event.data.source,
+              url: event.data.url,
+            });
+          } else {
+            // Fallback if Readability fails
+            setError('Could not extract article content. Try pasting text manually.');
+            setTab('paste');
+          }
+        } catch (err) {
+          console.error('Readability extraction failed:', err);
+          setError('Failed to process article. Try pasting text manually.');
+          setTab('paste');
+        }
+      }
+
+      // Legacy: handle pre-extracted content (backwards compatibility)
       if (event.data?.type === 'speedread-article') {
         onAdd({
           title: event.data.title,
@@ -249,38 +274,4 @@ export function AddContent({ onAdd, onClose }: AddContentProps) {
       )}
     </div>
   );
-}
-
-/**
- * Simple article content extraction fallback.
- * In production, use @mozilla/readability.
- */
-function extractArticleContent(doc: Document): string {
-  // Try common article containers
-  const selectors = [
-    'article',
-    '[role="article"]',
-    '.article-content',
-    '.post-content',
-    '.entry-content',
-    'main',
-    '.content',
-  ];
-
-  for (const selector of selectors) {
-    const el = doc.querySelector(selector);
-    if (el && el.textContent && el.textContent.length > 500) {
-      return cleanText(el.textContent);
-    }
-  }
-
-  // Fallback: get body text
-  return cleanText(doc.body.textContent || '');
-}
-
-function cleanText(text: string): string {
-  return text
-    .replace(/\s+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
