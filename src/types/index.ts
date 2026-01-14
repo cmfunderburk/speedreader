@@ -2,7 +2,7 @@ export type TokenMode = 'word' | 'phrase' | 'clause' | 'custom';
 
 // Character width targets for each mode
 export const MODE_CHAR_WIDTHS: Record<Exclude<TokenMode, 'word'>, number> = {
-  phrase: 15,
+  phrase: 10,
   clause: 40,
   custom: 30, // default for custom, overridden by user setting
 };
