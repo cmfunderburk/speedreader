@@ -45,66 +45,84 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const [mode, setMode] = useState<TokenMode>(initialMode);
 
   const timerRef = useRef<number | null>(null);
-  const articleRef = useRef<Article | null>(null);
+  const chunksRef = useRef<Chunk[]>(chunks);
+  const indexRef = useRef(currentChunkIndex);
+  const wpmRef = useRef(wpm);
+  const articleRef = useRef<Article | null>(article);
 
-  // Keep articleRef in sync
-  useEffect(() => {
-    articleRef.current = article;
-  }, [article]);
+  // Keep refs in sync with state
+  useEffect(() => { chunksRef.current = chunks; }, [chunks]);
+  useEffect(() => { indexRef.current = currentChunkIndex; }, [currentChunkIndex]);
+  useEffect(() => { wpmRef.current = wpm; }, [wpm]);
+  useEffect(() => { articleRef.current = article; }, [article]);
 
-  // Clear timer on unmount
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
-    };
-  }, []);
-
-  // Schedule next chunk
-  const scheduleNext = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-
-    setCurrentChunkIndex(prevIndex => {
-      setChunks(currentChunks => {
-        if (prevIndex >= currentChunks.length - 1) {
-          setIsPlaying(false);
-          onComplete?.();
-          return currentChunks;
-        }
-
-        const chunk = currentChunks[prevIndex];
-        const delay = calculateDisplayTime(chunk, wpm);
-
-        timerRef.current = window.setTimeout(() => {
-          setCurrentChunkIndex(i => {
-            const newIndex = i + 1;
-            // Persist position periodically
-            if (articleRef.current && newIndex % 10 === 0) {
-              updateArticlePosition(articleRef.current.id, newIndex);
-            }
-            return newIndex;
-          });
-        }, delay);
-
-        return currentChunks;
-      });
-
-      return prevIndex;
-    });
-  }, [wpm, onComplete]);
-
-  // Effect to handle playback
-  useEffect(() => {
-    if (isPlaying && chunks.length > 0) {
-      scheduleNext();
-    } else if (!isPlaying && timerRef.current) {
+  // Clear timer helper
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-  }, [isPlaying, currentChunkIndex, chunks.length, scheduleNext]);
+  }, []);
+
+  // Clear timer on unmount
+  useEffect(() => clearTimer, [clearTimer]);
+
+  // Advance to next chunk
+  const advanceToNext = useCallback(() => {
+    const chunks = chunksRef.current;
+    const currentIndex = indexRef.current;
+
+    if (currentIndex >= chunks.length - 1) {
+      // Reached the end
+      setIsPlaying(false);
+      onComplete?.();
+      return;
+    }
+
+    // Move to next chunk
+    const nextIndex = currentIndex + 1;
+    setCurrentChunkIndex(nextIndex);
+
+    // Persist position periodically
+    if (articleRef.current && nextIndex % 10 === 0) {
+      updateArticlePosition(articleRef.current.id, nextIndex);
+    }
+  }, [onComplete]);
+
+  // Schedule next chunk display
+  const scheduleNext = useCallback(() => {
+    clearTimer();
+
+    const chunks = chunksRef.current;
+    const currentIndex = indexRef.current;
+    const currentWpm = wpmRef.current;
+
+    if (currentIndex >= chunks.length) {
+      setIsPlaying(false);
+      return;
+    }
+
+    const chunk = chunks[currentIndex];
+    if (!chunk) {
+      setIsPlaying(false);
+      return;
+    }
+
+    const delay = calculateDisplayTime(chunk, currentWpm);
+
+    timerRef.current = window.setTimeout(() => {
+      advanceToNext();
+    }, delay);
+  }, [clearTimer, advanceToNext]);
+
+  // Handle playback state changes
+  useEffect(() => {
+    if (isPlaying && chunks.length > 0) {
+      scheduleNext();
+    } else {
+      clearTimer();
+    }
+  }, [isPlaying, currentChunkIndex, chunks.length, scheduleNext, clearTimer]);
 
   const play = useCallback(() => {
     if (chunks.length > 0 && currentChunkIndex < chunks.length) {
@@ -114,15 +132,12 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
 
   const pause = useCallback(() => {
     setIsPlaying(false);
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+    clearTimer();
     // Persist position on pause
     if (articleRef.current) {
       updateArticlePosition(articleRef.current.id, currentChunkIndex);
     }
-  }, [currentChunkIndex]);
+  }, [clearTimer, currentChunkIndex]);
 
   const toggle = useCallback(() => {
     if (isPlaying) {
