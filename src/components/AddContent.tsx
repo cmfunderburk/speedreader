@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Article } from '../types';
 
 interface AddContentProps {
@@ -7,6 +7,11 @@ interface AddContentProps {
 }
 
 type Tab = 'url' | 'paste' | 'bookmarklet';
+
+// Get the SpeedRead URL for the bookmarklet to use
+function getSpeedReadUrl(): string {
+  return window.location.origin;
+}
 
 export function AddContent({ onAdd, onClose }: AddContentProps) {
   const [tab, setTab] = useState<Tab>('url');
@@ -72,37 +77,53 @@ export function AddContent({ onAdd, onClose }: AddContentProps) {
     });
   };
 
+  const speedReadUrl = getSpeedReadUrl();
+
+  // Bookmarklet opens SpeedRead and sends data via postMessage
   const bookmarkletCode = `javascript:(function(){
     const title = document.querySelector('h1')?.innerText || document.title;
     const article = document.querySelector('article') || document.querySelector('main') || document.body;
     const content = article.innerText;
     const source = location.hostname.replace('www.', '');
-    const data = {title, content, source, url: location.href};
-    localStorage.setItem('speedread_bookmarklet', JSON.stringify(data));
-    alert('Article saved! Return to SpeedRead and click "Load from Bookmarklet"');
+    const data = {type:'speedread-article', title, content, source, url: location.href};
+    const w = window.open('${speedReadUrl}?import=1', 'speedread');
+    if(w){
+      const send = () => w.postMessage(data, '${speedReadUrl}');
+      setTimeout(send, 1000);
+      setTimeout(send, 2000);
+      setTimeout(send, 3000);
+    } else {
+      alert('Could not open SpeedRead. Check popup blocker.');
+    }
   })();`;
 
-  const handleLoadBookmarklet = () => {
-    try {
-      const data = localStorage.getItem('speedread_bookmarklet');
-      if (!data) {
-        setError('No bookmarklet data found. Use the bookmarklet on an article first.');
-        return;
+  // Listen for postMessage from bookmarklet
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin if needed - for localhost dev, accept all
+      if (event.data?.type === 'speedread-article') {
+        onAdd({
+          title: event.data.title,
+          content: event.data.content,
+          source: event.data.source,
+          url: event.data.url,
+        });
       }
+    };
 
-      const article = JSON.parse(data);
-      onAdd({
-        title: article.title,
-        content: article.content,
-        source: article.source,
-        url: article.url,
-      });
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onAdd]);
 
-      localStorage.removeItem('speedread_bookmarklet');
-    } catch {
-      setError('Failed to load bookmarklet data');
+  // Check URL params for import mode (auto-show bookmarklet tab)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('import') === '1') {
+      setTab('bookmarklet');
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
     }
-  };
+  }, []);
 
   return (
     <div className="add-content">
@@ -211,14 +232,14 @@ export function AddContent({ onAdd, onClose }: AddContentProps) {
           </a>
           <p className="bookmarklet-instructions">
             <strong>Step 2:</strong> When viewing a paywalled article (while logged in),
-            click the bookmarklet to save it.
+            click the bookmarklet. SpeedRead will open and the article will be imported automatically.
+          </p>
+          <p className="bookmarklet-instructions bookmarklet-note">
+            Note: You may need to allow popups for this site if blocked.
           </p>
           <p className="bookmarklet-instructions">
-            <strong>Step 3:</strong> Return here and click the button below:
+            <strong>Waiting for article...</strong> Click the bookmarklet on an article page.
           </p>
-          <button onClick={handleLoadBookmarklet} className="btn-submit">
-            Load from Bookmarklet
-          </button>
         </div>
       )}
     </div>

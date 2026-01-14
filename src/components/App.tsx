@@ -15,11 +15,17 @@ import type { Article, Feed, TokenMode } from '../types';
 
 type View = 'reader' | 'preview' | 'add';
 
+// Check if we're in import mode (opened from bookmarklet)
+function getInitialView(): View {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('import') === '1' ? 'add' : 'reader';
+}
+
 export function App() {
   const settings = loadSettings();
   const [articles, setArticles] = useState<Article[]>(() => loadArticles());
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
-  const [view, setView] = useState<View>('reader');
+  const [view, setView] = useState<View>(getInitialView);
   const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
 
