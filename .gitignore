@@ -28,7 +28,8 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Claude local files
-.claude/
+# Claude local files (except skills which are repo-specific)
+.claude/*
+!.claude/skills/
 # Library content (PDFs, EPUBs) - not tracked in git
 library/
