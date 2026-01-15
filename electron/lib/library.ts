@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
+import { isFrontmatterFilename } from './cleanup'
 
 export interface LibrarySource {
   name: string
@@ -13,6 +14,8 @@ export interface LibraryItem {
   type: 'pdf' | 'epub'
   size: number
   modifiedAt: number
+  parentDir?: string       // Immediate parent directory name (for grouping)
+  isFrontmatter?: boolean  // Detected as frontmatter file
 }
 
 const SOURCES_FILE = 'library-sources.json'
@@ -65,6 +68,7 @@ export function removeSource(sourcePath: string): void {
 
 export async function scanDirectory(dirPath: string): Promise<LibraryItem[]> {
   const items: LibraryItem[] = []
+  const rootPath = path.resolve(dirPath)
 
   async function scanRecursive(currentPath: string): Promise<void> {
     try {
@@ -81,12 +85,22 @@ export async function scanDirectory(dirPath: string): Promise<LibraryItem[]> {
           if (ext === '.pdf' || ext === '.epub') {
             try {
               const stats = fs.statSync(fullPath)
+
+              // Compute parent directory relative to root
+              // e.g., if root is /references and file is /references/book-name/chapter.pdf
+              // then parentDir is "book-name"
+              const relativePath = path.relative(rootPath, fullPath)
+              const parentDir = path.dirname(relativePath)
+              const hasParentDir = parentDir && parentDir !== '.'
+
               items.push({
                 name: entry.name,
                 path: fullPath,
                 type: ext === '.pdf' ? 'pdf' : 'epub',
                 size: stats.size,
                 modifiedAt: stats.mtimeMs,
+                parentDir: hasParentDir ? parentDir : undefined,
+                isFrontmatter: isFrontmatterFilename(entry.name),
               })
             } catch (err) {
               // Skip files we can't stat
@@ -102,8 +116,15 @@ export async function scanDirectory(dirPath: string): Promise<LibraryItem[]> {
 
   await scanRecursive(dirPath)
 
-  // Sort by name
-  items.sort((a, b) => a.name.localeCompare(b.name))
+  // Sort by parent directory first, then by name within each group
+  items.sort((a, b) => {
+    const parentA = a.parentDir || ''
+    const parentB = b.parentDir || ''
+    if (parentA !== parentB) {
+      return parentA.localeCompare(parentB)
+    }
+    return a.name.localeCompare(b.name)
+  })
 
   return items
 }

@@ -9,6 +9,8 @@ export interface LibraryItem {
   type: 'pdf' | 'epub'
   size: number
   modifiedAt: number
+  parentDir?: string       // Immediate parent directory name (for grouping)
+  isFrontmatter?: boolean  // Detected as frontmatter file
 }
 
 export interface ExtractedContent {

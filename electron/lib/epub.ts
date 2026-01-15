@@ -1,4 +1,5 @@
 import * as path from 'path'
+import { shouldSkipChapter, isBoilerplateContent } from './cleanup'
 
 interface EpubChapter {
   title: string
@@ -11,7 +12,23 @@ interface EpubExtractResult {
   chapters: EpubChapter[]
 }
 
-export async function extractEpubText(filePath: string): Promise<EpubExtractResult> {
+export interface EpubExtractOptions {
+  skipFrontmatter?: boolean
+  skipBackmatter?: boolean
+  minChapterWords?: number
+}
+
+const defaultEpubOptions: EpubExtractOptions = {
+  skipFrontmatter: true,
+  skipBackmatter: true,
+  minChapterWords: 100,
+}
+
+export async function extractEpubText(
+  filePath: string,
+  options: EpubExtractOptions = {}
+): Promise<EpubExtractResult> {
+  const opts = { ...defaultEpubOptions, ...options }
   const EPub = require('epub')
   const { JSDOM } = require('jsdom')
 
@@ -43,15 +60,34 @@ export async function extractEpubText(filePath: string): Promise<EpubExtractResu
         for (const item of flow) {
           if (item.id) {
             try {
-              const chapterText = await getChapterText(epub, item.id)
-              if (chapterText.trim()) {
-                const chapterTitle = item.title || `Chapter ${chapters.length + 1}`
-                chapters.push({
-                  title: chapterTitle,
-                  content: chapterText,
-                })
-                allText.push(chapterText)
+              const chapterTitle = item.title || `Chapter ${chapters.length + 1}`
+
+              // Skip frontmatter/backmatter chapters by title
+              if (opts.skipFrontmatter || opts.skipBackmatter) {
+                if (shouldSkipChapter(chapterTitle)) {
+                  console.log(`Skipping chapter: ${chapterTitle}`)
+                  continue
+                }
               }
+
+              const chapterText = await getChapterText(epub, item.id)
+
+              // Skip empty chapters
+              if (!chapterText.trim()) {
+                continue
+              }
+
+              // Skip boilerplate content (too short or list-like)
+              if (isBoilerplateContent(chapterText, opts.minChapterWords)) {
+                console.log(`Skipping boilerplate chapter: ${chapterTitle}`)
+                continue
+              }
+
+              chapters.push({
+                title: chapterTitle,
+                content: chapterText,
+              })
+              allText.push(chapterText)
             } catch (err) {
               console.warn(`Failed to load chapter ${item.id}:`, err)
             }

@@ -7,8 +7,6 @@ export function isBreakChunk(chunk: Chunk): boolean {
   return chunk.wordCount === 0;
 }
 
-// Average English word length in characters (not including space)
-const AVG_WORD_LENGTH = 4.8;
 // Average word length including trailing space
 const AVG_WORD_LENGTH_WITH_SPACE = 5.8;
 
