@@ -122,6 +122,28 @@ button {
   margin-top: 0.5rem;
 }
 
+/* Multi-word display (for chunks > 15 chars) */
+.reader-text-multiword {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 2.5rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.reader-word {
+  display: inline;
+}
+
+.reader-word-before,
+.reader-word-after {
+  color: var(--text-primary);
+}
+
+.reader-word-space {
+  color: var(--text-primary);
+}
+
 .reader-placeholder {
   color: var(--text-muted);
   font-size: 1.5rem;
@@ -154,41 +176,58 @@ button {
   white-space: pre-wrap;
 }
 
-.saccade-dimmed {
-  color: var(--text-primary);
-  opacity: 0.35;
-}
-
-.saccade-chunk {
-  color: var(--text-primary);
-  opacity: 0.85;
-}
-
-.saccade-orp {
-  color: var(--accent);
-  font-weight: 700;
-  opacity: 1;
-}
-
 /* Saccade headings */
 .saccade-line-heading {
   text-align: center;
 }
 
-.saccade-heading-dimmed {
+/* Body text styling */
+.saccade-body {
+  color: var(--text-primary);
+}
+
+/* Heading text styling */
+.saccade-heading {
   font-weight: 600;
-  opacity: 0.35;
 }
 
-.saccade-heading-chunk {
-  font-weight: 700;
-  opacity: 0.85;
+/* Chunk container */
+.saccade-chunk {
+  display: inline;
 }
 
-.saccade-heading-orp {
+/* Gap between chunks (natural spacing) */
+.saccade-chunk-gap {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* Static OVP marker - always visible on all chunks */
+.saccade-ovp-marker {
   color: var(--accent);
-  font-weight: 700;
+  opacity: 0.6;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+
+/* Current OVP when pacer is active */
+.saccade-ovp-current {
+  color: var(--accent);
   opacity: 1;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-style: solid;
+  text-underline-offset: 3px;
+  background-color: rgba(233, 69, 96, 0.15);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Current chunk gets subtle background */
+.saccade-chunk-current {
+  background-color: rgba(233, 69, 96, 0.08);
+  border-radius: 3px;
 }
 
 /* Progress Bar */
@@ -327,6 +366,33 @@ button {
   color: var(--text-secondary);
   font-size: 0.85rem;
   min-width: 40px;
+}
+
+.control-checkbox {
+  cursor: pointer;
+}
+
+.control-checkbox input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Page navigation for saccade mode */
+.controls-page-nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+.page-indicator {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  min-width: 100px;
+  text-align: center;
 }
 
 /* Article Queue */
