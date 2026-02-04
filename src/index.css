@@ -191,41 +191,27 @@ button {
   font-weight: 600;
 }
 
-/* Chunk container */
-.saccade-chunk {
-  display: inline;
+/* Line sweep pacer */
+.saccade-line-sweep {
+  position: relative;
 }
 
-/* Gap between chunks (natural spacing) */
-.saccade-chunk-gap {
-  color: var(--text-muted);
-  opacity: 0.5;
+.saccade-line-sweep::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  background: rgba(233, 69, 96, 0.08);
+  border-right: 2px solid rgba(233, 69, 96, 0.4);
+  pointer-events: none;
+  animation: line-sweep var(--sweep-duration) linear forwards;
 }
 
-/* Static OVP marker - always visible on all chunks */
-.saccade-ovp-marker {
-  color: var(--accent);
-  opacity: 0.6;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 3px;
-}
-
-/* Current OVP when pacer is active */
-.saccade-ovp-current {
-  color: var(--accent);
-  opacity: 1;
-  text-decoration: underline;
-  text-decoration-style: solid;
-  text-underline-offset: 3px;
-  background-color: rgba(233, 69, 96, 0.15);
-  border-radius: 2px;
-}
-
-/* Current chunk gets subtle background */
-.saccade-chunk-current {
-  background-color: rgba(233, 69, 96, 0.08);
-  border-radius: 3px;
+@keyframes line-sweep {
+  from { width: 0; }
+  to { width: 100%; }
 }
 
 /* Progress Bar */

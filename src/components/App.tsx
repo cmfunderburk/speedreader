@@ -204,6 +204,7 @@ export function App() {
                 mode={rsvp.mode}
                 saccadePage={rsvp.currentSaccadePage}
                 showPacer={rsvp.showPacer}
+                wpm={rsvp.wpm}
               />
             )}
 

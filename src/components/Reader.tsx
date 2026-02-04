@@ -9,6 +9,7 @@ interface ReaderProps {
   mode: TokenMode;
   saccadePage?: SaccadePage | null;
   showPacer?: boolean;
+  wpm: number;
 }
 
 /**
@@ -38,10 +39,10 @@ function WordWithOVP({ word }: { word: string }) {
   );
 }
 
-export function Reader({ chunk, displayMode, mode, saccadePage, showPacer = true }: ReaderProps) {
+export function Reader({ chunk, displayMode, mode, saccadePage, showPacer = true, wpm }: ReaderProps) {
   // Saccade mode uses its own reader component
   if (displayMode === 'saccade') {
-    return <SaccadeReader page={saccadePage ?? null} chunk={chunk} showPacer={showPacer} />;
+    return <SaccadeReader page={saccadePage ?? null} chunk={chunk} showPacer={showPacer} wpm={wpm} />;
   }
   // No article loaded
   if (!chunk) {

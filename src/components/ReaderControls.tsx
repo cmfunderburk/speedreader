@@ -107,8 +107,8 @@ export function ReaderControls({
           </select>
         </label>
 
-        {/* Hide chunk mode in prediction mode (forced to word) */}
-        {!isPrediction && (
+        {/* Hide chunk mode in prediction mode (forced to word) and saccade mode (line sweep) */}
+        {!isPrediction && displayMode !== 'saccade' && (
           <label className="control-group">
             <span className="control-label">Chunks:</span>
             <select
@@ -124,7 +124,7 @@ export function ReaderControls({
           </label>
         )}
 
-        {mode === 'custom' && !isPrediction && (
+        {mode === 'custom' && !isPrediction && displayMode !== 'saccade' && (
           <label className="control-group">
             <span className="control-label">Width:</span>
             <input

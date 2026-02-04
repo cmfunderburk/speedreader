@@ -1,12 +1,15 @@
 import type { Chunk, SaccadePage, SaccadeLine } from '../types';
+import { calculateDisplayTime } from '../lib/rsvp';
 
 interface SaccadeReaderProps {
   page: SaccadePage | null;
   chunk: Chunk | null;
+  showPacer: boolean;
+  wpm: number;
 }
 
-export function SaccadeReader({ page, chunk }: SaccadeReaderProps) {
-  if (!page || !chunk?.saccade) {
+export function SaccadeReader({ page, chunk, showPacer, wpm }: SaccadeReaderProps) {
+  if (!page) {
     return (
       <div className="reader saccade-reader">
         <div className="reader-display">
@@ -16,100 +19,71 @@ export function SaccadeReader({ page, chunk }: SaccadeReaderProps) {
     );
   }
 
+  // Determine current chunk position for pacer highlighting
+  const currentLineIndex = chunk?.saccade?.lineIndex ?? -1;
+
   return (
     <div className="reader saccade-reader">
       <div className="saccade-page">
         {page.lines.map((line, lineIndex) => (
-          <div key={lineIndex} className={getLineClassName(line)}>
-            {renderLine(line, lineIndex, chunk)}
-          </div>
+          <SaccadeLineComponent
+            key={lineIndex}
+            line={line}
+            lineIndex={lineIndex}
+            lineChunks={page.lineChunks[lineIndex] || []}
+            isCurrentLine={showPacer && lineIndex === currentLineIndex}
+            wpm={wpm}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function getLineClassName(line: SaccadeLine): string {
-  if (line.type === 'heading') {
-    return 'saccade-line saccade-line-heading';
-  }
-  return 'saccade-line';
+interface SaccadeLineProps {
+  line: SaccadeLine;
+  lineIndex: number;
+  lineChunks: Chunk[];
+  isCurrentLine: boolean;
+  wpm: number;
 }
 
-function renderLine(line: SaccadeLine, lineIndex: number, chunk: Chunk): JSX.Element {
-  const isCurrentLine = chunk.saccade?.lineIndex === lineIndex;
-
+function SaccadeLineComponent({ line, lineIndex, lineChunks, isCurrentLine, wpm }: SaccadeLineProps) {
   // Blank line - render non-breaking space to maintain height
   if (line.type === 'blank') {
-    return <span className="saccade-dimmed">{'\u00A0'}</span>;
+    return (
+      <div className="saccade-line">
+        <span>{'\u00A0'}</span>
+      </div>
+    );
   }
 
-  // Heading line
-  if (line.type === 'heading') {
-    return renderHeadingLine(line, isCurrentLine, chunk);
-  }
+  const isHeading = line.type === 'heading';
 
-  // Body line
-  return renderBodyLine(line.text, isCurrentLine, chunk);
-}
+  // Sweep duration = exact sum of chunk display times for this line,
+  // matching the actual timer that drives line advancement
+  const sweepDuration = lineChunks.reduce(
+    (sum, c) => sum + calculateDisplayTime(c, wpm), 0
+  );
 
-function renderHeadingLine(line: SaccadeLine, isCurrentLine: boolean, chunk: Chunk): JSX.Element {
-  if (!isCurrentLine || !chunk.saccade) {
-    return <span className="saccade-heading-dimmed">{line.text}</span>;
-  }
+  const lineClasses = [
+    'saccade-line',
+    isHeading && 'saccade-line-heading',
+    isCurrentLine && 'saccade-line-sweep',
+  ].filter(Boolean).join(' ');
 
-  // Current heading - split by ORP like body text
-  const { startChar, endChar } = chunk.saccade;
-  const beforeChunk = line.text.slice(0, startChar);
-  const chunkText = line.text.slice(startChar, endChar);
-  const afterChunk = line.text.slice(endChar);
-
-  const orpInChunk = chunk.orpIndex;
-  const beforeOrp = chunkText.slice(0, orpInChunk);
-  const orpChar = chunkText[orpInChunk] || '';
-  const afterOrp = chunkText.slice(orpInChunk + 1);
+  const sweepStyle = isCurrentLine
+    ? { '--sweep-duration': `${sweepDuration}ms` } as React.CSSProperties
+    : undefined;
 
   return (
-    <>
-      <span className="saccade-heading-dimmed">{beforeChunk}</span>
-      <span className="saccade-heading-chunk">{beforeOrp}</span>
-      <span className="saccade-heading-orp">{orpChar}</span>
-      <span className="saccade-heading-chunk">{afterOrp}</span>
-      <span className="saccade-heading-dimmed">{afterChunk}</span>
-    </>
+    <div className={lineClasses} style={sweepStyle} key={isCurrentLine ? lineIndex : undefined}>
+      {renderLineText(line.text, isHeading)}
+    </div>
   );
 }
 
-function renderBodyLine(text: string, isCurrentLine: boolean, chunk: Chunk): JSX.Element {
-  // Empty body line
-  if (text.length === 0) {
-    return <span className="saccade-dimmed">{'\u00A0'}</span>;
-  }
-
-  // Not the current line - render fully dimmed
-  if (!isCurrentLine || !chunk.saccade) {
-    return <span className="saccade-dimmed">{text}</span>;
-  }
-
-  // Current line - split into before-chunk, chunk with ORP, after-chunk
-  const { startChar, endChar } = chunk.saccade;
-  const beforeChunk = text.slice(0, startChar);
-  const chunkText = text.slice(startChar, endChar);
-  const afterChunk = text.slice(endChar);
-
-  // Within chunk, split by ORP
-  const orpInChunk = chunk.orpIndex;
-  const beforeOrp = chunkText.slice(0, orpInChunk);
-  const orpChar = chunkText[orpInChunk] || '';
-  const afterOrp = chunkText.slice(orpInChunk + 1);
-
-  return (
-    <>
-      <span className="saccade-dimmed">{beforeChunk}</span>
-      <span className="saccade-chunk">{beforeOrp}</span>
-      <span className="saccade-orp">{orpChar}</span>
-      <span className="saccade-chunk">{afterOrp}</span>
-      <span className="saccade-dimmed">{afterChunk}</span>
-    </>
-  );
+function renderLineText(text: string, isHeading: boolean): JSX.Element {
+  const className = isHeading ? 'saccade-heading' : 'saccade-body';
+  return <span className={className}>{text || '\u00A0'}</span>;
 }
