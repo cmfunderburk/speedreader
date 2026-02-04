@@ -7,28 +7,58 @@ export function isBreakChunk(chunk: Chunk): boolean {
   return chunk.wordCount === 0;
 }
 
-// Average word length including trailing space
-const AVG_WORD_LENGTH_WITH_SPACE = 5.8;
+// Average English word length in characters (no spaces)
+export const AVG_WORD_LENGTH = 4.8;
+
+// Minimum display time in ms (prevents ultra-short flashes)
+const MIN_DISPLAY_MS = 80;
+
+// Punctuation pause multipliers
+const MAJOR_PUNCT_MULTIPLIER = 1.5;  // .!?
+const MINOR_PUNCT_MULTIPLIER = 1.25; // ,;:—–
+
+const MAJOR_PUNCTUATION = /[.!?]$/;
+const MINOR_PUNCTUATION = /[,;:\u2014\u2013-]$/;
 
 /**
  * Calculate display time for a chunk in milliseconds.
  *
- * Uses word count for accurate WPM timing. At 400 WPM, each word
- * gets 150ms (60000/400). A 3-word chunk displays for 450ms.
+ * Uses character count for proportional timing. At 400 WPM with an average
+ * word length of 4.8 characters, each character gets ~31.25ms. Longer words
+ * naturally get more time than shorter ones.
  *
- * Break chunks (wordCount=0) use character-based timing for their pause.
+ * Punctuation pauses: +50% after sentence endings (.!?), +25% after
+ * clause boundaries (,;:—–).
+ *
+ * Minimum display time of 80ms prevents ultra-short chunks from flashing
+ * invisibly.
+ *
+ * Break chunks (paragraph markers) get a fixed 2-word pause.
  */
 export function calculateDisplayTime(chunk: Chunk, wpm: number): number {
-  const msPerWord = 60000 / wpm;
-
-  // Break chunks (paragraph markers) use character-based pause
+  // Break chunks (paragraph markers) get a fixed pause of ~2 words
   if (chunk.wordCount === 0) {
-    const charsPerMinute = wpm * AVG_WORD_LENGTH_WITH_SPACE;
-    const msPerChar = 60000 / charsPerMinute;
-    return (chunk.text.length + 1) * msPerChar;
+    const msPerWord = 60000 / wpm;
+    return msPerWord * 2;
   }
 
-  return chunk.wordCount * msPerWord;
+  // Character-based timing: derive ms-per-character from WPM and average word length
+  const charsPerMinute = wpm * AVG_WORD_LENGTH;
+  const msPerChar = 60000 / charsPerMinute;
+
+  // Count non-space characters for timing
+  const charCount = chunk.text.replace(/\s/g, '').length;
+  let displayTime = charCount * msPerChar;
+
+  // Punctuation pauses at chunk boundaries
+  const trimmed = chunk.text.trimEnd();
+  if (MAJOR_PUNCTUATION.test(trimmed)) {
+    displayTime *= MAJOR_PUNCT_MULTIPLIER;
+  } else if (MINOR_PUNCTUATION.test(trimmed)) {
+    displayTime *= MINOR_PUNCT_MULTIPLIER;
+  }
+
+  return Math.max(MIN_DISPLAY_MS, displayTime);
 }
 
 /**

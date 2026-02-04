@@ -75,11 +75,14 @@ function normalizeText(text: string): string {
 }
 
 /**
- * Tokenize text into words, splitting on whitespace.
+ * Tokenize text into words, splitting on whitespace and em/en dashes.
+ * Dashes are kept attached to the preceding word for display continuity.
  */
 function tokenizeWords(text: string): string[] {
   const normalized = normalizeText(text);
-  return normalized.split(/\s+/).filter(w => w.length > 0);
+  // Insert a split point after em/en dashes (keeping the dash on the preceding word)
+  const withSplits = normalized.replace(/([^\s])([—–])(?=[^\s])/g, '$1$2 ');
+  return withSplits.split(/\s+/).filter(w => w.length > 0);
 }
 
 /**
@@ -241,8 +244,13 @@ export function tokenize(text: string, mode: TokenMode, customCharWidth?: number
 
 /**
  * Calculate estimated reading time in seconds for given chunks at WPM.
+ * Uses character count with 4.8 avg word length for consistency with
+ * the character-based RSVP pacing.
  */
 export function estimateReadingTime(chunks: Chunk[], wpm: number): number {
-  const totalWords = chunks.reduce((sum, chunk) => sum + chunk.wordCount, 0);
-  return (totalWords / wpm) * 60;
+  const AVG_WORD_LENGTH = 4.8;
+  const totalChars = chunks.reduce((sum, chunk) =>
+    sum + chunk.text.replace(/\s/g, '').length, 0
+  );
+  return (totalChars / (wpm * AVG_WORD_LENGTH)) * 60;
 }
