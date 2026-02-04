@@ -346,6 +346,10 @@ button {
   accent-color: var(--accent);
 }
 
+.wpm-slider {
+  width: 140px;
+}
+
 .control-value {
   color: var(--text-secondary);
   font-size: 0.85rem;

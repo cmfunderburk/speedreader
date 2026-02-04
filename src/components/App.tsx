@@ -51,8 +51,8 @@ export function App() {
     onSpace: rsvp.displayMode === 'prediction' ? undefined : rsvp.toggle,
     onLeft: rsvp.prev,
     onRight: rsvp.next,
-    onBracketLeft: () => rsvp.setWpm(Math.max(100, rsvp.wpm - 50)),
-    onBracketRight: () => rsvp.setWpm(Math.min(800, rsvp.wpm + 50)),
+    onBracketLeft: () => rsvp.setWpm(Math.max(100, rsvp.wpm - 10)),
+    onBracketRight: () => rsvp.setWpm(Math.min(800, rsvp.wpm + 10)),
     onEscape: () => {
       if (view !== 'reader') {
         setView('reader');

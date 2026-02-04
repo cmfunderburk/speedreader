@@ -82,15 +82,16 @@ export function ReaderControls({
         {!isPrediction && (
           <label className="control-group">
             <span className="control-label">Speed:</span>
-            <select
+            <input
+              type="range"
+              min="100"
+              max="800"
+              step="10"
               value={wpm}
               onChange={e => onWpmChange(Number(e.target.value))}
-              className="control-select"
-            >
-              {[100, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800].map(v => (
-                <option key={v} value={v}>{v} WPM</option>
-              ))}
-            </select>
+              className="control-slider wpm-slider"
+            />
+            <span className="control-value">{wpm} WPM</span>
           </label>
         )}
 
