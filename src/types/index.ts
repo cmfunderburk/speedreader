@@ -1,5 +1,5 @@
 // Display mode: how text is presented
-export type DisplayMode = 'rsvp' | 'saccade' | 'prediction';
+export type DisplayMode = 'rsvp' | 'saccade' | 'prediction' | 'recall';
 
 // Token/chunk mode: how text is chunked
 export type TokenMode = 'word' | 'phrase' | 'clause' | 'custom';

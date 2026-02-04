@@ -190,3 +190,62 @@ export function tokenizeSaccade(
 
   return { pages, chunks: allChunks };
 }
+
+/**
+ * Tokenize text for recall mode.
+ * Same page layout as saccade, but produces one chunk per word (not per line)
+ * so the user can type each word individually.
+ */
+export function tokenizeRecall(
+  text: string
+): { pages: SaccadePage[]; chunks: Chunk[] } {
+  const lines = flowTextIntoLines(text, SACCADE_LINE_WIDTH);
+  const rawPages = groupIntoPages(lines, SACCADE_LINES_PER_PAGE);
+
+  const allChunks: Chunk[] = [];
+  const pages: SaccadePage[] = [];
+
+  for (let pageIndex = 0; pageIndex < rawPages.length; pageIndex++) {
+    const rawPage = rawPages[pageIndex];
+    const pageLineChunks: Chunk[][] = [];
+
+    for (let lineIndex = 0; lineIndex < rawPage.lines.length; lineIndex++) {
+      const line = rawPage.lines[lineIndex];
+
+      if (line.type === 'blank' || line.text.trim().length === 0) {
+        pageLineChunks.push([]);
+        continue;
+      }
+
+      const lineChunks: Chunk[] = [];
+      const wordRegex = /\S+/g;
+      let match;
+
+      while ((match = wordRegex.exec(line.text)) !== null) {
+        const word = match[0];
+        const chunk: Chunk = {
+          text: word,
+          wordCount: 1,
+          orpIndex: 0,
+          saccade: {
+            pageIndex,
+            lineIndex,
+            startChar: match.index,
+            endChar: match.index + word.length,
+          },
+        };
+        lineChunks.push(chunk);
+        allChunks.push(chunk);
+      }
+
+      pageLineChunks.push(lineChunks);
+    }
+
+    pages.push({
+      lines: rawPage.lines,
+      lineChunks: pageLineChunks,
+    });
+  }
+
+  return { pages, chunks: allChunks };
+}

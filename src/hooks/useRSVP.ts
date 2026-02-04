@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { Chunk, TokenMode, Article, SaccadePage, DisplayMode, PredictionStats, PredictionResult } from '../types';
 import { tokenize } from '../lib/tokenizer';
-import { tokenizeSaccade } from '../lib/saccade';
+import { tokenizeSaccade, tokenizeRecall } from '../lib/saccade';
 import { calculateDisplayTime } from '../lib/rsvp';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
 import { isExactMatch } from '../lib/levenshtein';
@@ -128,6 +128,9 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     if (dm === 'saccade') {
       const result = tokenizeSaccade(content);
       return { chunks: result.chunks, pages: result.pages };
+    } else if (dm === 'recall') {
+      const result = tokenizeRecall(content);
+      return { chunks: result.chunks, pages: result.pages };
     } else if (dm === 'prediction') {
       // Prediction mode always uses word tokenization
       const newChunks = tokenize(content, 'word');
@@ -226,7 +229,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   // Handle playback state changes
   // In saccade mode, timer only runs if pacer is on; in RSVP mode, always run
   useEffect(() => {
-    const shouldRunTimer = isPlaying && chunks.length > 0 && (displayMode !== 'saccade' || showPacer);
+    const shouldRunTimer = isPlaying && chunks.length > 0 &&
+      displayMode !== 'recall' && (displayMode !== 'saccade' || showPacer);
     if (shouldRunTimer) {
       const isFirst = isFirstScheduleRef.current;
       isFirstScheduleRef.current = false;
@@ -361,6 +365,15 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
                            article.predictionPosition || 0;
         setCurrentChunkIndex(Math.min(savedIndex, newChunks.length - 1));
         // Reset stats when entering prediction mode
+        setPredictionStats({
+          totalWords: 0,
+          exactMatches: 0,
+          averageLoss: 0,
+          history: [],
+        });
+      } else if (newDisplayMode === 'recall') {
+        // Entering recall: start from beginning, reset stats
+        setCurrentChunkIndex(0);
         setPredictionStats({
           totalWords: 0,
           exactMatches: 0,

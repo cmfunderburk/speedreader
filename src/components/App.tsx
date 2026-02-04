@@ -11,6 +11,7 @@ import { LibrarySettings } from './LibrarySettings';
 import { SettingsPanel } from './SettingsPanel';
 import { PredictionReader } from './PredictionReader';
 import { PredictionStats } from './PredictionStats';
+import { RecallReader } from './RecallReader';
 import { useRSVP } from '../hooks/useRSVP';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { calculateRemainingTime, formatTime, calculateProgress } from '../lib/rsvp';
@@ -48,7 +49,7 @@ export function App() {
 
   // Keyboard shortcuts
   useKeyboard({
-    onSpace: rsvp.displayMode === 'prediction' ? undefined : rsvp.toggle,
+    onSpace: (rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall') ? undefined : rsvp.toggle,
     onLeft: rsvp.prev,
     onRight: rsvp.next,
     onBracketLeft: () => rsvp.setWpm(Math.max(100, rsvp.wpm - 10)),
@@ -196,6 +197,21 @@ export function App() {
                   goToIndex={rsvp.goToIndex}
                 />
               </div>
+            ) : rsvp.displayMode === 'recall' ? (
+              <div className="recall-container">
+                <PredictionStats stats={rsvp.predictionStats} />
+                <RecallReader
+                  pages={rsvp.saccadePages}
+                  chunks={rsvp.chunks}
+                  currentChunkIndex={rsvp.currentChunkIndex}
+                  onAdvance={rsvp.next}
+                  onPredictionResult={rsvp.handlePredictionResult}
+                  onReset={rsvp.resetPredictionStats}
+                  onClose={() => rsvp.setDisplayMode('rsvp')}
+                  stats={rsvp.predictionStats}
+                  goToIndex={rsvp.goToIndex}
+                />
+              </div>
             ) : (
               <Reader
                 chunk={rsvp.currentChunk}
@@ -208,7 +224,7 @@ export function App() {
               />
             )}
 
-            {rsvp.displayMode !== 'prediction' && (
+            {rsvp.displayMode !== 'prediction' && rsvp.displayMode !== 'recall' && (
               <ProgressBar progress={progress} onChange={handleProgressChange} />
             )}
 
@@ -217,7 +233,7 @@ export function App() {
                 <>
                   <span className="article-title">{rsvp.article.title}</span>
                   <span className="article-meta">
-                    {rsvp.displayMode === 'prediction' ? (
+                    {rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall' ? (
                       `${rsvp.article.source} • ${rsvp.currentChunkIndex} / ${rsvp.chunks.length} words`
                     ) : (
                       `${rsvp.article.source} • ${remainingTime} remaining • ${rsvp.wpm} WPM`

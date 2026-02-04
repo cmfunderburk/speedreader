@@ -48,12 +48,13 @@ export function ReaderControls({
   onNextPage,
   onPrevPage,
 }: ReaderControlsProps) {
-  const isPrediction = displayMode === 'prediction';
+  const isSelfPaced = displayMode === 'prediction' || displayMode === 'recall';
+  const showChunks = !isSelfPaced && displayMode !== 'saccade';
 
   return (
     <div className="reader-controls">
-      {/* Hide transport controls in prediction mode (user controls pace via typing) */}
-      {!isPrediction && (
+      {/* Hide transport controls in self-paced modes */}
+      {!isSelfPaced && (
         <div className="controls-transport">
           <button onClick={onReset} title="Skip to start" className="control-btn">
             ⏮
@@ -78,8 +79,8 @@ export function ReaderControls({
       )}
 
       <div className="controls-settings">
-        {/* Hide WPM in prediction mode (user controls pace via typing) */}
-        {!isPrediction && (
+        {/* Hide WPM in self-paced modes */}
+        {!isSelfPaced && (
           <label className="control-group">
             <span className="control-label">Speed:</span>
             <input
@@ -105,11 +106,12 @@ export function ReaderControls({
             <option value="rsvp">RSVP</option>
             <option value="saccade">Saccade</option>
             <option value="prediction">Prediction</option>
+            <option value="recall">Recall</option>
           </select>
         </label>
 
-        {/* Hide chunk mode in prediction mode (forced to word) and saccade mode (line sweep) */}
-        {!isPrediction && displayMode !== 'saccade' && (
+        {/* Hide chunk mode in self-paced and saccade modes */}
+        {showChunks && (
           <label className="control-group">
             <span className="control-label">Chunks:</span>
             <select
@@ -125,7 +127,7 @@ export function ReaderControls({
           </label>
         )}
 
-        {mode === 'custom' && !isPrediction && displayMode !== 'saccade' && (
+        {mode === 'custom' && showChunks && (
           <label className="control-group">
             <span className="control-label">Width:</span>
             <input
