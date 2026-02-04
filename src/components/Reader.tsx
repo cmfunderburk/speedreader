@@ -1,4 +1,4 @@
-import type { Chunk, DisplayMode, SaccadePage } from '../types';
+import type { Chunk, DisplayMode, SaccadePage, TokenMode } from '../types';
 import { isBreakChunk } from '../lib/rsvp';
 import { SaccadeReader } from './SaccadeReader';
 
@@ -6,6 +6,7 @@ interface ReaderProps {
   chunk: Chunk | null;
   isPlaying: boolean;
   displayMode: DisplayMode;
+  mode: TokenMode;
   saccadePage?: SaccadePage | null;
   showPacer?: boolean;
 }
@@ -37,7 +38,7 @@ function WordWithOVP({ word }: { word: string }) {
   );
 }
 
-export function Reader({ chunk, displayMode, saccadePage, showPacer = true }: ReaderProps) {
+export function Reader({ chunk, displayMode, mode, saccadePage, showPacer = true }: ReaderProps) {
   // Saccade mode uses its own reader component
   if (displayMode === 'saccade') {
     return <SaccadeReader page={saccadePage ?? null} chunk={chunk} showPacer={showPacer} />;
@@ -67,16 +68,17 @@ export function Reader({ chunk, displayMode, saccadePage, showPacer = true }: Re
   const { text, orpIndex } = chunk;
   const isMultiWord = text.includes(' ') && text.length > 15;
 
-  // Multi-word chunks over 15 chars: show per-word OVP
+  // Multi-word chunks over 15 chars: show per-word OVP (word mode only)
   if (isMultiWord) {
     const words = text.split(' ').filter(w => w.length > 0);
+    const showOVP = mode === 'word';
     return (
       <div className="reader">
         <div className="reader-display">
           <div className="reader-text-multiword">
             {words.map((word, i) => (
               <span key={i}>
-                <WordWithOVP word={word} />
+                {showOVP ? <WordWithOVP word={word} /> : <span className="reader-word">{word}</span>}
                 {i < words.length - 1 && <span className="reader-word-space"> </span>}
               </span>
             ))}
@@ -90,13 +92,14 @@ export function Reader({ chunk, displayMode, saccadePage, showPacer = true }: Re
   const beforeOrp = text.slice(0, orpIndex);
   const orpChar = text[orpIndex] || '';
   const afterOrp = text.slice(orpIndex + 1);
+  const showOVP = mode === 'word';
 
   return (
     <div className="reader">
       <div className="reader-display">
         <div className="reader-text">
           <span className="reader-before">{beforeOrp}</span>
-          <span className="reader-orp">{orpChar}</span>
+          <span className={showOVP ? 'reader-orp' : 'reader-before'}>{orpChar}</span>
           <span className="reader-after">{afterOrp}</span>
         </div>
         <div className="reader-marker">▲</div>
