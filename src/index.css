@@ -215,13 +215,11 @@ button {
 .saccade-ovp-current {
   color: var(--accent);
   opacity: 1;
-  font-weight: 700;
   text-decoration: underline;
   text-decoration-style: solid;
   text-underline-offset: 3px;
   background-color: rgba(233, 69, 96, 0.15);
   border-radius: 2px;
-  padding: 0 1px;
 }
 
 /* Current chunk gets subtle background */
