@@ -5,6 +5,7 @@ import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE } from '../lib/
 import { calculateDisplayTime } from '../lib/rsvp';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
 import { isExactMatch } from '../lib/levenshtein';
+import { usePlaybackTimer } from './usePlaybackTimer';
 
 interface UseRSVPOptions {
   initialWpm?: number;
@@ -48,6 +49,7 @@ interface UseRSVPReturn {
   reset: () => void;
   handlePredictionResult: (result: PredictionResult) => void;
   resetPredictionStats: () => void;
+  advanceSelfPaced: () => void;
 }
 
 export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
@@ -62,7 +64,6 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const [article, setArticle] = useState<Article | null>(null);
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [wpm, setWpm] = useState(initialWpm);
   const [mode, setMode] = useState<TokenMode>(initialMode);
   const [displayMode, setDisplayModeState] = useState<DisplayMode>(initialDisplayMode);
@@ -74,10 +75,10 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     totalWords: 0,
     exactMatches: 0,
     averageLoss: 0,
-    history: [],
   });
 
-  const timerRef = useRef<number | null>(null);
+  const shouldAutoPlay = displayMode !== 'recall' && (displayMode !== 'saccade' || showPacer);
+
   const chunksRef = useRef<Chunk[]>(chunks);
   const indexRef = useRef(currentChunkIndex);
   const wpmRef = useRef(wpm);
@@ -88,18 +89,25 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const showPacerRef = useRef(showPacer);
   const linesPerPageRef = useRef(linesPerPage);
 
-  // Debug timing refs
-  const debugStartTimeRef = useRef<number | null>(null);
-  const debugStartIndexRef = useRef<number>(0);
-  const debugWordCountRef = useRef<number>(0);
-
-  // Drift-correcting timer refs
-  const expectedTimeRef = useRef<number>(0);  // When current chunk SHOULD end
-  const playStartTimeRef = useRef<number>(0); // When playback started
-  const isFirstScheduleRef = useRef<boolean>(false); // Track first schedule after play
-
   // Prediction mode position tracking (word index, separate from RSVP/saccade)
   const predictionWordIndexRef = useRef<number>(0);
+  const advanceToNextRef = useRef<() => void>(() => {});
+
+  const getCurrentDuration = useCallback((): number | null => {
+    const chunks = chunksRef.current;
+    const currentIndex = indexRef.current;
+
+    if (currentIndex >= chunks.length) {
+      return null;
+    }
+
+    const chunk = chunks[currentIndex];
+    if (!chunk) {
+      return null;
+    }
+
+    return calculateDisplayTime(chunk, wpmRef.current);
+  }, []);
 
   // Keep refs in sync with state
   useEffect(() => { chunksRef.current = chunks; }, [chunks]);
@@ -112,16 +120,6 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   useEffect(() => { showPacerRef.current = showPacer; }, [showPacer]);
   useEffect(() => { linesPerPageRef.current = linesPerPage; }, [linesPerPage]);
 
-  // Clear timer helper
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  // Clear timer on unmount
-  useEffect(() => clearTimer, [clearTimer]);
 
   // Helper to tokenize based on current display mode and chunk mode
   const retokenize = useCallback((
@@ -148,36 +146,21 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   }, []);
 
   // Advance to next chunk
+  const { isPlaying, play: startTimer, pause: stopTimer } = usePlaybackTimer({
+    enabled: shouldAutoPlay && chunks.length > 0,
+    watch: currentChunkIndex,
+    getDurationMs: getCurrentDuration,
+    onTick: () => advanceToNextRef.current(),
+  });
+
   const advanceToNext = useCallback(() => {
     const chunks = chunksRef.current;
     const currentIndex = indexRef.current;
 
     if (currentIndex >= chunks.length - 1) {
-      // Reached the end - log final stats
-      if (debugStartTimeRef.current !== null) {
-        const elapsed = performance.now() - debugStartTimeRef.current;
-        const elapsedMinutes = elapsed / 60000;
-        const effectiveWPM = debugWordCountRef.current / elapsedMinutes;
-        console.log(`[WPM Debug] Final: ${debugWordCountRef.current} words in ${(elapsed/1000).toFixed(1)}s = ${effectiveWPM.toFixed(1)} WPM (target: ${wpmRef.current})`);
-        debugStartTimeRef.current = null;
-      }
-      setIsPlaying(false);
+      stopTimer();
       onComplete?.();
       return;
-    }
-
-    // Track words for debug
-    const chunk = chunks[currentIndex];
-    if (chunk) {
-      debugWordCountRef.current += chunk.wordCount;
-    }
-
-    // Log every 100 chunks
-    if (debugStartTimeRef.current !== null && (currentIndex - debugStartIndexRef.current) % 100 === 0 && currentIndex > debugStartIndexRef.current) {
-      const elapsed = performance.now() - debugStartTimeRef.current;
-      const elapsedMinutes = elapsed / 60000;
-      const effectiveWPM = debugWordCountRef.current / elapsedMinutes;
-      console.log(`[WPM Debug] ${debugWordCountRef.current} words in ${(elapsed/1000).toFixed(1)}s = ${effectiveWPM.toFixed(1)} WPM (target: ${wpmRef.current})`);
     }
 
     // Move to next chunk
@@ -188,92 +171,28 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     if (articleRef.current && nextIndex % 10 === 0) {
       updateArticlePosition(articleRef.current.id, nextIndex);
     }
-  }, [onComplete]);
+  }, [onComplete, stopTimer]);
 
-  // Schedule next chunk display with drift correction
-  const scheduleNext = useCallback((isFirstChunk: boolean = false) => {
-    clearTimer();
-
-    const chunks = chunksRef.current;
-    const currentIndex = indexRef.current;
-    const currentWpm = wpmRef.current;
-
-    if (currentIndex >= chunks.length) {
-      setIsPlaying(false);
-      return;
-    }
-
-    const chunk = chunks[currentIndex];
-    if (!chunk) {
-      setIsPlaying(false);
-      return;
-    }
-
-    const chunkDuration = calculateDisplayTime(chunk, currentWpm);
-    const now = performance.now();
-
-    if (isFirstChunk) {
-      // First chunk: set expected end time
-      playStartTimeRef.current = now;
-      expectedTimeRef.current = now + chunkDuration;
-    } else {
-      // Subsequent chunks: add duration to expected time
-      expectedTimeRef.current += chunkDuration;
-    }
-
-    // Calculate actual delay, compensating for drift
-    // If we're behind schedule, delay will be smaller, but cap speedup at 33%
-    // (minimum delay is 75% of normal chunk duration to avoid jarring skips)
-    const minDelay = chunkDuration * 0.75;
-    const delay = Math.max(minDelay, expectedTimeRef.current - now);
-
-    timerRef.current = window.setTimeout(() => {
-      advanceToNext();
-    }, delay);
-  }, [clearTimer, advanceToNext]);
-
-  // Handle playback state changes
-  // In saccade mode, timer only runs if pacer is on; in RSVP mode, always run
   useEffect(() => {
-    const shouldRunTimer = isPlaying && chunks.length > 0 &&
-      displayMode !== 'recall' && (displayMode !== 'saccade' || showPacer);
-    if (shouldRunTimer) {
-      const isFirst = isFirstScheduleRef.current;
-      isFirstScheduleRef.current = false;
-      scheduleNext(isFirst);
-    } else {
-      clearTimer();
-    }
-  }, [isPlaying, currentChunkIndex, chunks.length, scheduleNext, clearTimer, displayMode, showPacer]);
+    advanceToNextRef.current = advanceToNext;
+  }, [advanceToNext]);
 
   const play = useCallback(() => {
     if (chunks.length > 0 && currentChunkIndex < chunks.length) {
-      // Initialize debug timing
-      debugStartTimeRef.current = performance.now();
-      debugStartIndexRef.current = currentChunkIndex;
-      debugWordCountRef.current = 0;
-      // Mark that next schedule is the first one (for drift correction init)
-      isFirstScheduleRef.current = true;
-      console.log(`[WPM Debug] Starting playback at ${wpm} WPM, chunk ${currentChunkIndex}`);
-      setIsPlaying(true);
+      startTimer();
     }
-  }, [chunks.length, currentChunkIndex, wpm]);
+  }, [chunks.length, currentChunkIndex, startTimer]);
 
   const pause = useCallback(() => {
-    // Log debug stats on pause
-    if (debugStartTimeRef.current !== null && debugWordCountRef.current > 0) {
-      const elapsed = performance.now() - debugStartTimeRef.current;
-      const elapsedMinutes = elapsed / 60000;
-      const effectiveWPM = debugWordCountRef.current / elapsedMinutes;
-      console.log(`[WPM Debug] Paused: ${debugWordCountRef.current} words in ${(elapsed/1000).toFixed(1)}s = ${effectiveWPM.toFixed(1)} WPM (target: ${wpmRef.current})`);
+    if (!isPlaying) {
+      return;
     }
-    setIsPlaying(false);
-    clearTimer();
+    stopTimer();
     // Persist position on pause
     if (articleRef.current) {
       updateArticlePosition(articleRef.current.id, currentChunkIndex);
     }
-  }, [clearTimer, currentChunkIndex]);
+  }, [currentChunkIndex, isPlaying, stopTimer]);
 
   const toggle = useCallback(() => {
     if (isPlaying) {
@@ -377,7 +296,6 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
           totalWords: 0,
           exactMatches: 0,
           averageLoss: 0,
-          history: [],
         });
       } else if (newDisplayMode === 'recall') {
         // Entering recall: start from beginning, reset stats
@@ -386,7 +304,6 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
           totalWords: 0,
           exactMatches: 0,
           averageLoss: 0,
-          history: [],
         });
       } else {
         // Entering RSVP/Saccade: use ratio-based mapping
@@ -465,7 +382,6 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   // Prediction mode handlers
   const handlePredictionResult = useCallback((result: PredictionResult) => {
     setPredictionStats(prev => {
-      const newHistory = [...prev.history, result];
       const totalWords = prev.totalWords + 1;
       const correct = isExactMatch(result.predicted, result.actual);
       const exactMatches = prev.exactMatches + (correct ? 1 : 0);
@@ -475,7 +391,6 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         totalWords,
         exactMatches,
         averageLoss: totalWords > 0 ? totalLoss / totalWords : 0,
-        history: newHistory,
       };
     });
   }, []);
@@ -485,9 +400,22 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       totalWords: 0,
       exactMatches: 0,
       averageLoss: 0,
-      history: [],
     });
     setCurrentChunkIndex(0);
+  }, []);
+
+  const advanceSelfPaced = useCallback(() => {
+    setCurrentChunkIndex(prevIndex => {
+      const total = chunksRef.current.length;
+      if (total === 0) {
+        return 0;
+      }
+      if (prevIndex >= total) {
+        return total;
+      }
+      const nextIndex = prevIndex + 1;
+      return nextIndex > total ? total : nextIndex;
+    });
   }, []);
 
   // Compute current saccade page
@@ -536,5 +464,6 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     reset,
     handlePredictionResult,
     resetPredictionStats,
+    advanceSelfPaced,
   };
 }

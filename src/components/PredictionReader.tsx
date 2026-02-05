@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react';
 import type { Chunk, PredictionResult, PredictionStats } from '../types';
 import { normalizedLoss, isExactMatch } from '../lib/levenshtein';
 import { LossMeter } from './LossMeter';
@@ -14,6 +14,7 @@ interface PredictionReaderProps {
   stats: PredictionStats;
   wpm: number;
   goToIndex: (index: number) => void;
+  onWpmChange: (wpm: number) => void;
 }
 
 /**
@@ -36,6 +37,7 @@ export function PredictionReader({
   stats,
   wpm,
   goToIndex,
+  onWpmChange,
 }: PredictionReaderProps) {
   const [input, setInput] = useState('');
   const [showingMiss, setShowingMiss] = useState(false);
@@ -67,16 +69,29 @@ export function PredictionReader({
     }
   }, [currentChunkIndex, previewIndex]);
 
-  // Build accumulated text from completed chunks
-  const accumulatedText = chunks
-    .slice(0, currentChunkIndex)
-    .map((chunk, i) => {
-      // Handle paragraph breaks (wordCount: 0 chunks)
+  const previewStartIndex = previewStartIndexRef.current;
+  const { completedText, previewCompletedText } = useMemo(() => {
+    if (currentChunkIndex <= 0) {
+      return { completedText: '', previewCompletedText: '' };
+    }
+    const limit = Math.min(currentChunkIndex, chunks.length);
+    const beforeParts: string[] = [];
+    const previewParts: string[] = [];
+    for (let i = 0; i < limit; i++) {
+      const chunk = chunks[i];
+      const target = isPreviewing && i >= previewStartIndex ? previewParts : beforeParts;
       if (chunk.wordCount === 0) {
-        return { type: 'break' as const, key: i };
+        target.push('\n\n');
+      } else {
+        target.push(chunk.text);
+        target.push(' ');
       }
-      return { type: 'word' as const, text: chunk.text, key: i };
-    });
+    }
+    return {
+      completedText: beforeParts.join(''),
+      previewCompletedText: previewParts.join(''),
+    };
+  }, [chunks, currentChunkIndex, isPreviewing, previewStartIndex]);
 
   // Check if we're at the end
   const isComplete = currentChunkIndex >= chunks.length;
@@ -163,29 +178,33 @@ export function PredictionReader({
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [goToIndex]);
 
-  const startPreview = useCallback(() => {
-    previewStartIndexRef.current = currentChunkIndex;
-    setPreviewIndex(currentChunkIndex);
-    setIsPreviewing(true);
-    setInput('');
-
-    const interval = 60000 / wpm;
+  const createPreviewInterval = useCallback(() => {
+    if (previewTimerRef.current) {
+      clearInterval(previewTimerRef.current);
+    }
+    const minInterval = 60000 / 1000; // cap at 1000 WPM equivalent
+    const interval = Math.max(minInterval, 60000 / wpm);
     previewTimerRef.current = setInterval(() => {
-      setPreviewIndex((prev) => {
+      setPreviewIndex(prev => {
         let next = prev + 1;
-        // Skip break chunks
         while (next < chunks.length && chunks[next].wordCount === 0) {
           next++;
         }
         if (next >= chunks.length) {
-          // Reached end — stop preview
           setTimeout(() => stopPreview(), 0);
           return prev;
         }
         return next;
       });
     }, interval);
-  }, [currentChunkIndex, wpm, chunks, stopPreview]);
+  }, [wpm, chunks, stopPreview]);
+
+  const startPreview = useCallback(() => {
+    previewStartIndexRef.current = currentChunkIndex;
+    setPreviewIndex(currentChunkIndex);
+    setIsPreviewing(true);
+    setInput('');
+  }, [currentChunkIndex]);
 
   const togglePreview = useCallback(() => {
     if (showingMiss || isComplete) return;
@@ -225,14 +244,17 @@ export function PredictionReader({
     return () => window.removeEventListener('keydown', handleGlobalKey);
   }, [togglePreview, resetToBeginning]);
 
-  // Clean up timer on unmount
   useEffect(() => {
+    if (isPreviewing) {
+      createPreviewInterval();
+    }
     return () => {
       if (previewTimerRef.current) {
         clearInterval(previewTimerRef.current);
+        previewTimerRef.current = null;
       }
     };
-  }, []);
+  }, [isPreviewing, wpm, createPreviewInterval]);
 
   // Handle read again
   const handleReadAgain = useCallback(() => {
@@ -270,18 +292,10 @@ export function PredictionReader({
     <div className="prediction-reader">
       <div className="prediction-text-area" ref={textAreaRef}>
         <span className="prediction-text">
-          {accumulatedText.map((item) => {
-            if (item.type === 'break') {
-              return <span key={item.key} className="prediction-paragraph-break" />;
-            }
-            // During preview, words from previewStartIndex onward get muted styling
-            const isPreviewWord = isPreviewing && item.key >= previewStartIndexRef.current;
-            return (
-              <span key={item.key} className={isPreviewWord ? 'prediction-preview-word' : ''}>
-                {item.text}{' '}
-              </span>
-            );
-          })}
+          {completedText}
+          {previewCompletedText && (
+            <span className="prediction-preview-word">{previewCompletedText}</span>
+          )}
         </span>
 
         {isPreviewing && (
@@ -357,6 +371,24 @@ export function PredictionReader({
           </div>
         </div>
       )}
+      <div className="prediction-controls">
+        <label className="prediction-speed-control">
+          <span className="prediction-speed-label">Preview Speed</span>
+          <input
+            type="range"
+            min="100"
+            max="800"
+            step="10"
+            value={wpm}
+            onChange={e => onWpmChange(Number(e.target.value))}
+            className="prediction-speed-slider"
+          />
+          <span className="prediction-speed-value">{wpm} WPM</span>
+        </label>
+        <div className="prediction-controls-hint">
+          Press Tab to preview at your selected speed
+        </div>
+      </div>
     </div>
   );
 }
