@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Reader } from './Reader';
 import { ReaderControls } from './ReaderControls';
 import { ProgressBar } from './ProgressBar';
@@ -165,6 +165,15 @@ export function App() {
     ? formatTime(calculateRemainingTime(rsvp.chunks, rsvp.currentChunkIndex, rsvp.wpm))
     : '--:--';
 
+  const totalWords = useMemo(
+    () => rsvp.chunks.reduce((sum, c) => sum + c.wordCount, 0),
+    [rsvp.chunks]
+  );
+
+  const formattedWordCount = totalWords >= 1000
+    ? `${(totalWords / 1000).toFixed(1).replace(/\.0$/, '')}k`
+    : `${totalWords}`;
+
   const progress = calculateProgress(rsvp.currentChunkIndex, rsvp.chunks.length);
 
   return (
@@ -236,7 +245,7 @@ export function App() {
                     {rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall' ? (
                       `${rsvp.article.source} • ${rsvp.currentChunkIndex} / ${rsvp.chunks.length} words`
                     ) : (
-                      `${rsvp.article.source} • ${remainingTime} remaining • ${rsvp.wpm} WPM`
+                      `${rsvp.article.source} • ${formattedWordCount} words • ${remainingTime} remaining • ${rsvp.wpm} WPM`
                     )}
                   </span>
                 </>
