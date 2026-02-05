@@ -1,4 +1,4 @@
-import type { Article, Feed, TokenMode, PredictionLineWidth } from '../types';
+import type { Article, Feed, TokenMode, PredictionLineWidth, RampCurve } from '../types';
 
 const STORAGE_KEYS = {
   articles: 'speedread_articles',
@@ -14,6 +14,10 @@ export interface Settings {
   saccadeFontSize: number;
   predictionFontSize: number;
   predictionLineWidth: PredictionLineWidth;
+  rampEnabled: boolean;
+  rampCurve: RampCurve;
+  rampRate: number;
+  rampInterval: number;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +28,10 @@ const DEFAULT_SETTINGS: Settings = {
   saccadeFontSize: 1.0,
   predictionFontSize: 1.25,
   predictionLineWidth: 'medium',
+  rampEnabled: false,
+  rampCurve: 'linear',
+  rampRate: 25,
+  rampInterval: 30,
 };
 
 /**

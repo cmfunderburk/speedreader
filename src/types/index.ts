@@ -11,6 +11,8 @@ export const MODE_CHAR_WIDTHS: Record<Exclude<TokenMode, 'word'>, number> = {
   custom: 30, // default for custom, overridden by user setting
 };
 
+export type RampCurve = 'linear' | 'logarithmic';
+
 export type PredictionLineWidth = 'narrow' | 'medium' | 'wide';
 
 export const PREDICTION_LINE_WIDTHS: Record<PredictionLineWidth, number> = {

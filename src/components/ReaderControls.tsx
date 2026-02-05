@@ -25,6 +25,9 @@ interface ReaderControlsProps {
   onLinesPerPageChange: (lines: number) => void;
   onNextPage: () => void;
   onPrevPage: () => void;
+  rampEnabled: boolean;
+  effectiveWpm: number;
+  onRampEnabledChange: (enabled: boolean) => void;
 }
 
 export function ReaderControls({
@@ -51,6 +54,9 @@ export function ReaderControls({
   onLinesPerPageChange,
   onNextPage,
   onPrevPage,
+  rampEnabled,
+  effectiveWpm,
+  onRampEnabledChange,
 }: ReaderControlsProps) {
   const isSelfPaced = displayMode === 'prediction' || displayMode === 'recall';
   const showChunks = !isSelfPaced && displayMode !== 'saccade';
@@ -85,19 +91,31 @@ export function ReaderControls({
       <div className="controls-settings">
         {/* Hide WPM in self-paced modes */}
         {!isSelfPaced && (
-          <label className="control-group">
-            <span className="control-label">Speed:</span>
-            <input
-              type="range"
-              min="100"
-              max="800"
-              step="10"
-              value={wpm}
-              onChange={e => onWpmChange(Number(e.target.value))}
-              className="control-slider wpm-slider"
-            />
-            <span className="control-value">{wpm} WPM</span>
-          </label>
+          <>
+            <label className="control-group">
+              <span className="control-label">Speed:</span>
+              <input
+                type="range"
+                min="100"
+                max="800"
+                step="10"
+                value={wpm}
+                onChange={e => onWpmChange(Number(e.target.value))}
+                className="control-slider wpm-slider"
+              />
+              <span className="control-value">
+                {rampEnabled ? `${effectiveWpm} → ${wpm} WPM` : `${wpm} WPM`}
+              </span>
+            </label>
+            <label className="control-group control-checkbox">
+              <input
+                type="checkbox"
+                checked={rampEnabled}
+                onChange={e => onRampEnabledChange(e.target.checked)}
+              />
+              <span className="control-label">Ramp</span>
+            </label>
+          </>
         )}
 
         <label className="control-group">

@@ -59,6 +59,10 @@ export function App() {
     initialWpm: settings.defaultWpm,
     initialMode: settings.defaultMode,
     initialCustomCharWidth: settings.customCharWidth,
+    initialRampEnabled: settings.rampEnabled,
+    rampCurve: settings.rampCurve,
+    rampRate: settings.rampRate,
+    rampInterval: settings.rampInterval,
     onComplete: () => {
       // Could auto-advance to next article here
     },
@@ -175,13 +179,22 @@ export function App() {
     saveSettings(newSettings);
   }, []);
 
+  const handleRampEnabledChange = useCallback((enabled: boolean) => {
+    rsvp.setRampEnabled(enabled);
+    setDisplaySettings(prev => {
+      const next = { ...prev, rampEnabled: enabled };
+      saveSettings(next);
+      return next;
+    });
+  }, [rsvp]);
+
   const handleProgressChange = useCallback((progress: number) => {
     const newIndex = Math.floor((progress / 100) * rsvp.chunks.length);
     rsvp.goToIndex(newIndex);
   }, [rsvp]);
 
   const remainingTime = rsvp.chunks.length > 0
-    ? formatTime(calculateRemainingTime(rsvp.chunks, rsvp.currentChunkIndex, rsvp.wpm))
+    ? formatTime(calculateRemainingTime(rsvp.chunks, rsvp.currentChunkIndex, rsvp.effectiveWpm))
     : '--:--';
 
   const totalWords = useMemo(
@@ -249,7 +262,7 @@ export function App() {
                 mode={rsvp.mode}
                 saccadePage={rsvp.currentSaccadePage}
                 showPacer={rsvp.showPacer}
-                wpm={rsvp.wpm}
+                wpm={rsvp.effectiveWpm}
               />
             )}
 
@@ -265,7 +278,7 @@ export function App() {
                     {rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall' ? (
                       `${rsvp.article.source} • ${rsvp.currentChunkIndex} / ${rsvp.chunks.length} words`
                     ) : (
-                      `${rsvp.article.source} • ${formattedWordCount} words • ${remainingTime} remaining • ${rsvp.wpm} WPM`
+                      `${rsvp.article.source} • ${formattedWordCount} words • ${remainingTime} remaining • ${rsvp.effectiveWpm} WPM`
                     )}
                   </span>
                 </>
@@ -298,6 +311,9 @@ export function App() {
               onLinesPerPageChange={rsvp.setLinesPerPage}
               onNextPage={rsvp.nextPage}
               onPrevPage={rsvp.prevPage}
+              rampEnabled={rsvp.rampEnabled}
+              effectiveWpm={rsvp.effectiveWpm}
+              onRampEnabledChange={handleRampEnabledChange}
             />
           </>
         )}

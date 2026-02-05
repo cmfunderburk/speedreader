@@ -132,6 +132,33 @@ export function indexFromProgress(progress: number, totalChunks: number): number
   return Math.floor((progress / 100) * totalChunks);
 }
 
+/**
+ * Compute effective WPM during ramp-up from 50% of target.
+ *
+ * Linear: increases by rampRate WPM every rampInterval seconds.
+ * Logarithmic: rampInterval is the half-life — every N seconds the
+ * remaining gap to target halves, approaching it asymptotically.
+ */
+export function getEffectiveWpm(
+  targetWpm: number,
+  elapsedMs: number,
+  rampRate: number,
+  rampInterval: number,
+  curve: 'linear' | 'logarithmic' = 'linear'
+): number {
+  const startWpm = targetWpm * 0.5;
+  const elapsedSeconds = elapsedMs / 1000;
+
+  if (curve === 'logarithmic') {
+    const gap = targetWpm - startWpm;
+    const remaining = gap * Math.pow(0.5, elapsedSeconds / rampInterval);
+    return Math.round(targetWpm - remaining);
+  }
+
+  const ratePerSecond = rampRate / rampInterval;
+  return Math.min(targetWpm, Math.round(startWpm + ratePerSecond * elapsedSeconds));
+}
+
 export function estimateReadingTimeFromCharCount(charCount: number, wpm: number): number {
   if (charCount <= 0 || wpm <= 0) return 0;
   const charsPerMinute = wpm * AVG_WORD_LENGTH;

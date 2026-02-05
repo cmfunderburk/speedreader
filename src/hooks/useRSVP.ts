@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import type { Chunk, TokenMode, Article, SaccadePage, DisplayMode, PredictionStats, PredictionResult } from '../types';
+import type { Chunk, TokenMode, Article, SaccadePage, DisplayMode, PredictionStats, PredictionResult, RampCurve } from '../types';
 import { tokenize } from '../lib/tokenizer';
 import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE } from '../lib/saccade';
-import { calculateDisplayTime } from '../lib/rsvp';
+import { calculateDisplayTime, getEffectiveWpm } from '../lib/rsvp';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
 import { isExactMatch } from '../lib/levenshtein';
 import { usePlaybackTimer } from './usePlaybackTimer';
@@ -12,6 +12,10 @@ interface UseRSVPOptions {
   initialMode?: TokenMode;
   initialDisplayMode?: DisplayMode;
   initialCustomCharWidth?: number;
+  initialRampEnabled?: boolean;
+  rampCurve?: RampCurve;
+  rampRate?: number;
+  rampInterval?: number;
   onComplete?: () => void;
 }
 
@@ -50,6 +54,9 @@ interface UseRSVPReturn {
   handlePredictionResult: (result: PredictionResult) => void;
   resetPredictionStats: () => void;
   advanceSelfPaced: () => void;
+  rampEnabled: boolean;
+  setRampEnabled: (enabled: boolean) => void;
+  effectiveWpm: number;
 }
 
 export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
@@ -58,6 +65,10 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     initialMode = 'phrase',
     initialDisplayMode = 'rsvp',
     initialCustomCharWidth = 30,
+    initialRampEnabled = false,
+    rampCurve = 'linear',
+    rampRate = 25,
+    rampInterval = 30,
     onComplete,
   } = options;
 
@@ -77,6 +88,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     averageLoss: 0,
   });
 
+  const [rampEnabled, setRampEnabledState] = useState(initialRampEnabled);
+
   const shouldAutoPlay = displayMode !== 'recall' && (displayMode !== 'saccade' || showPacer);
 
   const chunksRef = useRef<Chunk[]>(chunks);
@@ -89,9 +102,22 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const showPacerRef = useRef(showPacer);
   const linesPerPageRef = useRef(linesPerPage);
 
+  const rampEnabledRef = useRef(rampEnabled);
+  const rampCurveRef = useRef(rampCurve);
+  const rampRateRef = useRef(rampRate);
+  const rampIntervalRef = useRef(rampInterval);
+  const playStartTimeRef = useRef<number | null>(null);
+  const accumulatedPlayTimeRef = useRef(0);
+
   // Prediction mode position tracking (word index, separate from RSVP/saccade)
   const predictionWordIndexRef = useRef<number>(0);
   const advanceToNextRef = useRef<() => void>(() => {});
+
+  const getElapsedPlayTimeMs = useCallback((): number => {
+    const accumulated = accumulatedPlayTimeRef.current;
+    if (playStartTimeRef.current == null) return accumulated;
+    return accumulated + (performance.now() - playStartTimeRef.current);
+  }, []);
 
   const getCurrentDuration = useCallback((): number | null => {
     const chunks = chunksRef.current;
@@ -106,8 +132,19 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       return null;
     }
 
-    return calculateDisplayTime(chunk, wpmRef.current);
-  }, []);
+    let effectiveWpm = wpmRef.current;
+    if (rampEnabledRef.current) {
+      effectiveWpm = getEffectiveWpm(
+        wpmRef.current,
+        getElapsedPlayTimeMs(),
+        rampRateRef.current,
+        rampIntervalRef.current,
+        rampCurveRef.current
+      );
+    }
+
+    return calculateDisplayTime(chunk, effectiveWpm);
+  }, [getElapsedPlayTimeMs]);
 
   // Keep refs in sync with state
   useEffect(() => { chunksRef.current = chunks; }, [chunks]);
@@ -119,6 +156,10 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { showPacerRef.current = showPacer; }, [showPacer]);
   useEffect(() => { linesPerPageRef.current = linesPerPage; }, [linesPerPage]);
+  useEffect(() => { rampEnabledRef.current = rampEnabled; }, [rampEnabled]);
+  useEffect(() => { rampCurveRef.current = rampCurve; }, [rampCurve]);
+  useEffect(() => { rampRateRef.current = rampRate; }, [rampRate]);
+  useEffect(() => { rampIntervalRef.current = rampInterval; }, [rampInterval]);
 
 
   // Helper to tokenize based on current display mode and chunk mode
@@ -179,6 +220,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
 
   const play = useCallback(() => {
     if (chunks.length > 0 && currentChunkIndex < chunks.length) {
+      playStartTimeRef.current = performance.now();
       startTimer();
     }
   }, [chunks.length, currentChunkIndex, startTimer]);
@@ -186,6 +228,11 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const pause = useCallback(() => {
     if (!isPlaying) {
       return;
+    }
+    // Accumulate elapsed play time for ramp tracking
+    if (playStartTimeRef.current != null) {
+      accumulatedPlayTimeRef.current += performance.now() - playStartTimeRef.current;
+      playStartTimeRef.current = null;
     }
     stopTimer();
     // Persist position on pause
@@ -357,6 +404,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
 
   const loadArticle = useCallback((newArticle: Article) => {
     pause();
+    accumulatedPlayTimeRef.current = 0;
+    playStartTimeRef.current = null;
     setArticle(newArticle);
 
     const { chunks: newChunks, pages } = retokenize(
@@ -373,6 +422,16 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     const startIndex = newArticle.readPosition || 0;
     setCurrentChunkIndex(Math.min(startIndex, newChunks.length - 1));
   }, [pause, retokenize]);
+
+  const resetRampTime = useCallback(() => {
+    accumulatedPlayTimeRef.current = 0;
+    playStartTimeRef.current = isPlaying ? performance.now() : null;
+  }, [isPlaying]);
+
+  const setRampEnabled = useCallback((enabled: boolean) => {
+    setRampEnabledState(enabled);
+    resetRampTime();
+  }, [resetRampTime]);
 
   const reset = useCallback(() => {
     pause();
@@ -410,6 +469,12 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       return Math.min(prevIndex + 1, total);
     });
   }, []);
+
+  // Compute effective WPM (recomputes each tick via currentChunkIndex dep)
+  const effectiveWpm = useMemo(() => {
+    if (!rampEnabled) return wpm;
+    return getEffectiveWpm(wpm, getElapsedPlayTimeMs(), rampRate, rampInterval, rampCurve);
+  }, [rampEnabled, rampCurve, wpm, rampRate, rampInterval, currentChunkIndex, getElapsedPlayTimeMs]);
 
   // Compute current saccade page
   const currentChunk = chunks[currentChunkIndex] ?? null;
@@ -458,5 +523,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     handlePredictionResult,
     resetPredictionStats,
     advanceSelfPaced,
+    rampEnabled,
+    setRampEnabled,
+    effectiveWpm,
   };
 }
