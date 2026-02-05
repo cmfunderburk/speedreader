@@ -20,12 +20,24 @@ const MINOR_PUNCT_MULTIPLIER = 1.25; // ,;:—–
 const MAJOR_PUNCTUATION = /[.!?]$/;
 const MINOR_PUNCTUATION = /[,;:\u2014\u2013-]$/;
 
+const SHORT_WORD_THRESHOLD = 3;
+const MEDIUM_LONG_THRESHOLD = 7;
+const LONG_WORD_THRESHOLD = 9;
+
+const SHORT_WORD_MULTIPLIER = 0.9;
+const MEDIUM_LONG_WORD_MULTIPLIER = 1.15;
+const LONG_WORD_MULTIPLIER = 1.25;
+
+const PHRASE_ADDITIONAL_WORD_WEIGHT = 0.6;
+
 /**
  * Calculate display time for a chunk in milliseconds.
  *
- * Uses character count for proportional timing. At 400 WPM with an average
- * word length of 4.8 characters, each character gets ~31.25ms. Longer words
- * naturally get more time than shorter ones.
+ * Uses a base milliseconds-per-word cadence derived from WPM, then applies
+ * multipliers for phrase length, average word length, and punctuation pauses.
+ * Longer words get extra time while very short function words get slightly
+ * less, and additional words in a chunk cost a fraction of a full word to
+ * keep phrase modes feeling cohesive.
  *
  * Punctuation pauses: +50% after sentence endings (.!?), +25% after
  * clause boundaries (,;:—–).
@@ -36,25 +48,38 @@ const MINOR_PUNCTUATION = /[,;:\u2014\u2013-]$/;
  * Break chunks (paragraph markers) get a fixed 2-word pause.
  */
 export function calculateDisplayTime(chunk: Chunk, wpm: number): number {
+  const msPerWord = 60000 / wpm;
+
   // Break chunks (paragraph markers) get a fixed pause of ~2 words
   if (chunk.wordCount === 0) {
-    const msPerWord = 60000 / wpm;
     return msPerWord * 2;
   }
 
-  // Character-based timing: derive ms-per-character from WPM and average word length
-  const charsPerMinute = wpm * AVG_WORD_LENGTH;
-  const msPerChar = 60000 / charsPerMinute;
+  const wordCount = chunk.wordCount;
 
-  // Count non-space characters for timing
-  const charCount = chunk.text.replace(/\s/g, '').length;
-  let displayTime = charCount * msPerChar;
+  // Base phrase multiplier: each additional word costs a fraction of a single word
+  const phraseMultiplier = 1 + Math.max(0, wordCount - 1) * PHRASE_ADDITIONAL_WORD_WEIGHT;
+
+  const trimmedText = chunk.text.trimEnd();
+  const lexicalSample = trimmedText.replace(/[.!?,;:\u2014\u2013-]+$/, '');
+  const charCount = lexicalSample.replace(/\s/g, '').length || trimmedText.replace(/\s/g, '').length;
+  const avgChars = wordCount > 0 ? charCount / wordCount : AVG_WORD_LENGTH;
+
+  let lexicalMultiplier = 1;
+  if (avgChars >= LONG_WORD_THRESHOLD) {
+    lexicalMultiplier = LONG_WORD_MULTIPLIER;
+  } else if (avgChars >= MEDIUM_LONG_THRESHOLD) {
+    lexicalMultiplier = MEDIUM_LONG_WORD_MULTIPLIER;
+  } else if (avgChars <= SHORT_WORD_THRESHOLD) {
+    lexicalMultiplier = SHORT_WORD_MULTIPLIER;
+  }
+
+  let displayTime = msPerWord * phraseMultiplier * lexicalMultiplier;
 
   // Punctuation pauses at chunk boundaries
-  const trimmed = chunk.text.trimEnd();
-  if (MAJOR_PUNCTUATION.test(trimmed)) {
+  if (MAJOR_PUNCTUATION.test(trimmedText)) {
     displayTime *= MAJOR_PUNCT_MULTIPLIER;
-  } else if (MINOR_PUNCTUATION.test(trimmed)) {
+  } else if (MINOR_PUNCTUATION.test(trimmedText)) {
     displayTime *= MINOR_PUNCT_MULTIPLIER;
   }
 
@@ -105,4 +130,10 @@ export function calculateProgress(currentIndex: number, totalChunks: number): nu
 export function indexFromProgress(progress: number, totalChunks: number): number {
   if (totalChunks === 0) return 0;
   return Math.floor((progress / 100) * totalChunks);
+}
+
+export function estimateReadingTimeFromCharCount(charCount: number, wpm: number): number {
+  if (charCount <= 0 || wpm <= 0) return 0;
+  const charsPerMinute = wpm * AVG_WORD_LENGTH;
+  return (charCount / charsPerMinute) * 60;
 }

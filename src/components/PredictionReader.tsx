@@ -45,7 +45,7 @@ export function PredictionReader({
 
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
-  const previewStartIndexRef = useRef(0);
+  const [previewStartIndex, setPreviewStartIndex] = useState(0);
   const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -69,7 +69,6 @@ export function PredictionReader({
     }
   }, [currentChunkIndex, previewIndex]);
 
-  const previewStartIndex = previewStartIndexRef.current;
   const { completedText, previewCompletedText } = useMemo(() => {
     if (currentChunkIndex <= 0) {
       return { completedText: '', previewCompletedText: '' };
@@ -172,11 +171,11 @@ export function PredictionReader({
       clearInterval(previewTimerRef.current);
       previewTimerRef.current = null;
     }
-    goToIndex(previewStartIndexRef.current);
+    goToIndex(previewStartIndex);
     setIsPreviewing(false);
     setInput('');
     setTimeout(() => inputRef.current?.focus(), 0);
-  }, [goToIndex]);
+  }, [goToIndex, previewStartIndex]);
 
   const createPreviewInterval = useCallback(() => {
     if (previewTimerRef.current) {
@@ -200,7 +199,7 @@ export function PredictionReader({
   }, [wpm, chunks, stopPreview]);
 
   const startPreview = useCallback(() => {
-    previewStartIndexRef.current = currentChunkIndex;
+    setPreviewStartIndex(currentChunkIndex);
     setPreviewIndex(currentChunkIndex);
     setIsPreviewing(true);
     setInput('');
@@ -232,7 +231,7 @@ export function PredictionReader({
   // Global key listeners for preview toggle and reset
   useEffect(() => {
     const handleGlobalKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Tab') {
+      if (e.key === 'Tab' && (isPreviewing || document.activeElement === inputRef.current)) {
         e.preventDefault();
         togglePreview();
       } else if (e.key === '`') {
@@ -242,7 +241,7 @@ export function PredictionReader({
     };
     window.addEventListener('keydown', handleGlobalKey);
     return () => window.removeEventListener('keydown', handleGlobalKey);
-  }, [togglePreview, resetToBeginning]);
+  }, [isPreviewing, togglePreview, resetToBeginning]);
 
   useEffect(() => {
     if (isPreviewing) {
@@ -256,16 +255,11 @@ export function PredictionReader({
     };
   }, [isPreviewing, wpm, createPreviewInterval]);
 
-  // Handle read again
-  const handleReadAgain = useCallback(() => {
-    onReset();
-  }, [onReset]);
-
   if (isComplete) {
     return (
       <PredictionComplete
         stats={stats}
-        onReadAgain={handleReadAgain}
+        onReadAgain={onReset}
         onClose={onClose}
       />
     );

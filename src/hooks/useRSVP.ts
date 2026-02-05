@@ -407,14 +407,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const advanceSelfPaced = useCallback(() => {
     setCurrentChunkIndex(prevIndex => {
       const total = chunksRef.current.length;
-      if (total === 0) {
-        return 0;
-      }
-      if (prevIndex >= total) {
-        return total;
-      }
-      const nextIndex = prevIndex + 1;
-      return nextIndex > total ? total : nextIndex;
+      return Math.min(prevIndex + 1, total);
     });
   }, []);
 

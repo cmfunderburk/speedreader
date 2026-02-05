@@ -20,6 +20,7 @@ import type { Settings } from '../lib/storage';
 import { fetchFeed } from '../lib/feeds';
 import type { Article, Feed, TokenMode } from '../types';
 import { PREDICTION_LINE_WIDTHS } from '../types';
+import { measureTextMetrics } from '../lib/textMetrics';
 
 type View = 'reader' | 'preview' | 'add' | 'library-settings' | 'settings';
 
@@ -32,7 +33,23 @@ function getInitialView(): View {
 export function App() {
   const [displaySettings, setDisplaySettings] = useState<Settings>(() => loadSettings());
   const settings = displaySettings;
-  const [articles, setArticles] = useState<Article[]>(() => loadArticles());
+  const [articles, setArticles] = useState<Article[]>(() => {
+    const loaded = loadArticles();
+    let needsUpdate = false;
+    const migrated = loaded.map(article => {
+      if (article.charCount != null && article.wordCount != null) {
+        return article;
+      }
+      needsUpdate = true;
+      const metrics = measureTextMetrics(article.content);
+      return { ...article, ...metrics };
+    });
+    if (needsUpdate) {
+      saveArticles(migrated);
+      return migrated;
+    }
+    return loaded;
+  });
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
   const [view, setView] = useState<View>(getInitialView);
   const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
@@ -64,8 +81,10 @@ export function App() {
   });
 
   const handleAddArticle = useCallback((article: Omit<Article, 'id' | 'addedAt' | 'readPosition' | 'isRead'>) => {
+    const metrics = measureTextMetrics(article.content);
     const newArticle: Article = {
       ...article,
+      ...metrics,
       id: generateId(),
       addedAt: Date.now(),
       readPosition: 0,
@@ -197,13 +216,14 @@ export function App() {
                 <PredictionReader
                   chunks={rsvp.chunks}
                   currentChunkIndex={rsvp.currentChunkIndex}
-                  onAdvance={rsvp.next}
+                  onAdvance={rsvp.advanceSelfPaced}
                   onPredictionResult={rsvp.handlePredictionResult}
                   onReset={rsvp.resetPredictionStats}
                   onClose={() => rsvp.setDisplayMode('rsvp')}
                   stats={rsvp.predictionStats}
                   wpm={rsvp.wpm}
                   goToIndex={rsvp.goToIndex}
+                  onWpmChange={rsvp.setWpm}
                 />
               </div>
             ) : rsvp.displayMode === 'recall' ? (
@@ -213,7 +233,7 @@ export function App() {
                   pages={rsvp.saccadePages}
                   chunks={rsvp.chunks}
                   currentChunkIndex={rsvp.currentChunkIndex}
-                  onAdvance={rsvp.next}
+                  onAdvance={rsvp.advanceSelfPaced}
                   onPredictionResult={rsvp.handlePredictionResult}
                   onReset={rsvp.resetPredictionStats}
                   onClose={() => rsvp.setDisplayMode('rsvp')}
