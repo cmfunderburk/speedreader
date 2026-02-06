@@ -4,12 +4,42 @@ import { normalizeText, calculateORP } from './tokenizer';
 export const SACCADE_LINE_WIDTH = 80;
 export const SACCADE_LINES_PER_PAGE = 15;
 
+// --- Fixation scoring model ---
+// See docs/saccade/01-scoring-function-v1.md for design rationale.
+
+const FUNCTION_WORDS: ReadonlySet<string> = new Set([
+  'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'is', 'it', 'or', 'as',
+  'by', 'if', 'so', 'no', 'do', 'be', 'am', 'are', 'was', 'were', 'he',
+  'she', 'we', 'they', 'you', 'my', 'your', 'our', 'us', 'up', 'and',
+  'for', 'but', 'nor', 'yet', 'with', 'from', 'into', 'onto', 'this',
+  'that', 'these', 'those', 'its',
+]);
+
+const FUNCTION_WORD_PENALTY = 1.25;
+
+function lengthPenalty(len: number): number {
+  if (len <= 1) return 5.0;
+  if (len === 2) return 4.0;
+  if (len === 3) return 2.5;
+  if (len === 4) return 1.5;
+  if (len === 5) return 0.5;
+  return 0.0;
+}
+
+function wordPenalty(word: string): number {
+  const fp = FUNCTION_WORDS.has(word.toLowerCase().replace(/[^a-z]/g, ''))
+    ? FUNCTION_WORD_PENALTY : 0;
+  return lengthPenalty(word.length) + fp;
+}
+
 /**
  * Compute character indices within a line where fixation ORP highlights should appear.
  * Returns absolute character positions into lineText for each fixation point.
+ *
+ * Uses a scoring model that penalizes short and function words, preferring
+ * fixations on longer content words. See docs/saccade/01-scoring-function-v1.md.
  */
 export function computeLineFixations(lineText: string, saccadeLength: number): number[] {
-  // Extract words with positions
   const words: { word: string; start: number; orpPos: number }[] = [];
   const regex = /\S+/g;
   let m;
@@ -24,7 +54,11 @@ export function computeLineFixations(lineText: string, saccadeLength: number): n
 
   if (words.length === 0) return [];
 
-  // First fixation: skip word 1 if it's ≤3 chars and a second word exists
+  const aggression = Math.max(0, Math.min(1, (saccadeLength - 7) / 8));
+  const skipScale = 0.8 + 0.4 * aggression;
+  const maxJump = saccadeLength + 6;
+
+  // First fixation: skip short first word if a second word exists
   const firstIdx = (words[0].word.length <= 3 && words.length > 1) ? 1 : 0;
   const fixations: number[] = [words[firstIdx].orpPos];
   let lastFixIdx = firstIdx;
@@ -33,25 +67,38 @@ export function computeLineFixations(lineText: string, saccadeLength: number): n
     const lastPos = fixations[fixations.length - 1];
     const target = lastPos + saccadeLength;
 
-    // Pick the next word past current whose ORP is closest to target
+    // Score candidates within max jump window
     let bestIdx = -1;
-    let bestDist = Infinity;
+    let bestScore = Infinity;
+    let bestLen = 0;
 
     for (let i = lastFixIdx + 1; i < words.length; i++) {
-      const dist = Math.abs(words[i].orpPos - target);
-      if (dist < bestDist) {
-        bestDist = dist;
+      if (words[i].orpPos - lastPos > maxJump) continue;
+      const score = Math.abs(words[i].orpPos - target)
+        + skipScale * wordPenalty(words[i].word);
+      if (score < bestScore - 0.001
+          || (Math.abs(score - bestScore) < 0.001 && words[i].word.length > bestLen)) {
         bestIdx = i;
+        bestScore = score;
+        bestLen = words[i].word.length;
       }
     }
 
-    if (bestIdx === -1) break; // no more words
-
-    // Skip short function words: if best candidate is ≤3 chars
-    // and a following word exists, prefer the following word
-    if (words[bestIdx].word.length <= 3 && bestIdx + 1 < words.length) {
-      bestIdx++;
+    // Fallback: if nothing in window, take best remaining forward word
+    if (bestIdx === -1) {
+      for (let i = lastFixIdx + 1; i < words.length; i++) {
+        const score = Math.abs(words[i].orpPos - target)
+          + skipScale * wordPenalty(words[i].word);
+        if (score < bestScore - 0.001
+            || (Math.abs(score - bestScore) < 0.001 && words[i].word.length > bestLen)) {
+          bestIdx = i;
+          bestScore = score;
+          bestLen = words[i].word.length;
+        }
+      }
     }
+
+    if (bestIdx === -1) break;
 
     fixations.push(words[bestIdx].orpPos);
     lastFixIdx = bestIdx;
