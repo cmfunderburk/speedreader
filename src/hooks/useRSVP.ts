@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { Chunk, TokenMode, Article, SaccadePage, DisplayMode, PredictionStats, PredictionResult, RampCurve } from '../types';
 import { tokenize } from '../lib/tokenizer';
-import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE } from '../lib/saccade';
+import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE, computeLineFixations } from '../lib/saccade';
 import { calculateDisplayTime, getEffectiveWpm } from '../lib/rsvp';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
 import { isExactMatch } from '../lib/levenshtein';
@@ -17,6 +17,7 @@ interface UseRSVPOptions {
   rampStartPercent?: number;
   rampRate?: number;
   rampInterval?: number;
+  saccadeLength?: number;
   onComplete?: () => void;
 }
 
@@ -71,6 +72,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     rampStartPercent = 50,
     rampRate = 25,
     rampInterval = 30,
+    saccadeLength = 10,
     onComplete,
   } = options;
 
@@ -104,6 +106,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const showPacerRef = useRef(showPacer);
   const linesPerPageRef = useRef(linesPerPage);
 
+  const saccadeLengthRef = useRef(saccadeLength);
   const rampEnabledRef = useRef(rampEnabled);
   const rampCurveRef = useRef(rampCurve);
   const rampStartPercentRef = useRef(rampStartPercent);
@@ -147,6 +150,14 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       );
     }
 
+    // Saccade mode: use fixation-based timing to match visual pacer
+    if (displayModeRef.current === 'saccade' && chunk.text) {
+      const sl = saccadeLengthRef.current;
+      const fixations = computeLineFixations(chunk.text, sl);
+      const timePerSaccade = (sl / 5) * (60000 / effectiveWpm);
+      return fixations.length * timePerSaccade;
+    }
+
     return calculateDisplayTime(chunk, effectiveWpm);
   }, [getElapsedPlayTimeMs]);
 
@@ -160,6 +171,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { showPacerRef.current = showPacer; }, [showPacer]);
   useEffect(() => { linesPerPageRef.current = linesPerPage; }, [linesPerPage]);
+  useEffect(() => { saccadeLengthRef.current = saccadeLength; }, [saccadeLength]);
   useEffect(() => { rampEnabledRef.current = rampEnabled; }, [rampEnabled]);
   useEffect(() => { rampCurveRef.current = rampCurve; }, [rampCurve]);
   useEffect(() => { rampStartPercentRef.current = rampStartPercent; }, [rampStartPercent]);

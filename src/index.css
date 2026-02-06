@@ -184,17 +184,28 @@ button {
 
 /* Inline fixation-point highlights */
 .saccade-fixation {
-  color: rgba(233, 69, 96, 0.75);
+  color: rgba(224, 176, 56, 0.85);
   font-weight: 600;
 }
 
-/* Line sweep pacer */
+/* Active fixation target — red like RSVP ORP, flows through ORPs via staggered delays */
+.saccade-fixation-active {
+  animation-name: fixation-active;
+  animation-timing-function: step-start;
+  animation-fill-mode: both;
+}
+
+@keyframes fixation-active {
+  0%, 100% { color: rgba(224, 176, 56, 0.85); }
+  1%, 99% { color: var(--accent); }
+}
+
+/* Line sweep pacer — stepped to align with fixation positions */
 .saccade-line-sweep {
   position: relative;
 }
 
-.saccade-line-sweep::after {
-  content: '';
+.saccade-sweep {
   position: absolute;
   top: 0;
   left: 0;
@@ -203,12 +214,6 @@ button {
   background: rgba(233, 69, 96, 0.08);
   border-right: 2px solid rgba(233, 69, 96, 0.4);
   pointer-events: none;
-  animation: line-sweep var(--sweep-duration) linear forwards;
-}
-
-@keyframes line-sweep {
-  from { width: 0; }
-  to { width: 100%; }
 }
 
 /* Progress Bar */

@@ -64,6 +64,7 @@ export function App() {
     rampStartPercent: settings.rampStartPercent,
     rampRate: settings.rampRate,
     rampInterval: settings.rampInterval,
+    saccadeLength: settings.saccadeLength,
     onComplete: () => {
       // Could auto-advance to next article here
     },

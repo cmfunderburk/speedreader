@@ -32,26 +32,15 @@ export function computeLineFixations(lineText: string, saccadeLength: number): n
     const lastPos = fixations[fixations.length - 1];
     const target = lastPos + saccadeLength;
 
-    // Find candidate words whose ORP is within [target-2, target+2] and past current word
+    // Pick the next word past current whose ORP is closest to target
     let bestIdx = -1;
     let bestDist = Infinity;
 
     for (let i = lastFixIdx + 1; i < words.length; i++) {
       const dist = Math.abs(words[i].orpPos - target);
-      if (dist <= 2 && dist < bestDist) {
+      if (dist < bestDist) {
         bestDist = dist;
         bestIdx = i;
-      }
-    }
-
-    if (bestIdx === -1) {
-      // No candidate in tolerance — pick the next word past current whose ORP is closest to target
-      for (let i = lastFixIdx + 1; i < words.length; i++) {
-        const dist = Math.abs(words[i].orpPos - target);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestIdx = i;
-        }
       }
     }
 

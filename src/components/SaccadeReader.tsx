@@ -1,5 +1,4 @@
 import type { Chunk, SaccadePage, SaccadeLine } from '../types';
-import { calculateDisplayTime } from '../lib/rsvp';
 import { computeLineFixations } from '../lib/saccade';
 
 interface SaccadeReaderProps {
@@ -22,7 +21,6 @@ export function SaccadeReader({ page, chunk, showPacer, wpm, saccadeShowOVP, sac
     );
   }
 
-  // Determine current chunk position for pacer highlighting
   const currentLineIndex = chunk?.saccade?.lineIndex ?? -1;
 
   return (
@@ -33,8 +31,8 @@ export function SaccadeReader({ page, chunk, showPacer, wpm, saccadeShowOVP, sac
             key={lineIndex}
             line={line}
             lineIndex={lineIndex}
-            lineChunks={page.lineChunks[lineIndex] || []}
-            isCurrentLine={showPacer && lineIndex === currentLineIndex}
+            isActiveLine={lineIndex === currentLineIndex}
+            showPacer={showPacer}
             wpm={wpm}
             saccadeShowOVP={saccadeShowOVP}
             saccadeLength={saccadeLength}
@@ -48,15 +46,14 @@ export function SaccadeReader({ page, chunk, showPacer, wpm, saccadeShowOVP, sac
 interface SaccadeLineProps {
   line: SaccadeLine;
   lineIndex: number;
-  lineChunks: Chunk[];
-  isCurrentLine: boolean;
+  isActiveLine: boolean;
+  showPacer: boolean;
   wpm: number;
   saccadeShowOVP?: boolean;
   saccadeLength?: number;
 }
 
-function SaccadeLineComponent({ line, lineIndex, lineChunks, isCurrentLine, wpm, saccadeShowOVP, saccadeLength }: SaccadeLineProps) {
-  // Blank line - render non-breaking space to maintain height
+function SaccadeLineComponent({ line, lineIndex, isActiveLine, showPacer, wpm, saccadeShowOVP, saccadeLength }: SaccadeLineProps) {
   if (line.type === 'blank') {
     return (
       <div className="saccade-line">
@@ -67,57 +64,93 @@ function SaccadeLineComponent({ line, lineIndex, lineChunks, isCurrentLine, wpm,
 
   const isHeading = line.type === 'heading';
 
-  // Sweep duration = exact sum of chunk display times for this line,
-  // matching the actual timer that drives line advancement
-  const sweepDuration = lineChunks.reduce(
-    (sum, c) => sum + calculateDisplayTime(c, wpm), 0
-  );
+  // Compute fixations and timing
+  const fixations = (saccadeLength && line.text)
+    ? computeLineFixations(line.text, saccadeLength)
+    : [];
+  const timePerSaccade = (wpm && saccadeLength)
+    ? (saccadeLength / 5) * (60000 / wpm)
+    : 0;
+  const lineDuration = fixations.length * timePerSaccade;
+
+  const useSweepBar = showPacer && isActiveLine && lineDuration > 0 && fixations.length > 0;
+  const animateFlow = showPacer && isActiveLine && saccadeShowOVP && timePerSaccade > 0;
+
+  // Generate stepped keyframes so sweep bar arrives at each fixation position
+  // exactly when the ORP turns red
+  let sweepAnimName: string | undefined;
+  let sweepKeyframeCSS: string | undefined;
+
+  if (useSweepBar) {
+    sweepAnimName = `sweep-${lineIndex}`;
+    const steps = fixations.map((charIdx, i) => {
+      const timePct = ((i / fixations.length) * 100).toFixed(2);
+      return `${timePct}% { width: ${(charIdx + 0.5).toFixed(1)}ch; }`;
+    });
+    steps.push(`100% { width: ${(fixations[fixations.length - 1] + 0.5).toFixed(1)}ch; }`);
+    sweepKeyframeCSS = `@keyframes ${sweepAnimName} { ${steps.join(' ')} }`;
+  }
 
   const lineClasses = [
     'saccade-line',
     isHeading && 'saccade-line-heading',
-    isCurrentLine && 'saccade-line-sweep',
+    useSweepBar && 'saccade-line-sweep',
   ].filter(Boolean).join(' ');
 
-  const sweepStyle = isCurrentLine
-    ? { '--sweep-duration': `${sweepDuration}ms` } as React.CSSProperties
-    : undefined;
-
   return (
-    <div className={lineClasses} style={sweepStyle} key={isCurrentLine ? lineIndex : undefined}>
-      {renderLineText(line.text, isHeading, saccadeShowOVP, saccadeLength)}
+    <div className={lineClasses} key={isActiveLine ? lineIndex : undefined}>
+      {useSweepBar && sweepAnimName && sweepKeyframeCSS && (
+        <>
+          <style>{sweepKeyframeCSS}</style>
+          <span
+            className="saccade-sweep"
+            style={{ animation: `${sweepAnimName} ${lineDuration}ms step-end both` }}
+          />
+        </>
+      )}
+      {renderLineText(line.text, isHeading, saccadeShowOVP, fixations, animateFlow, timePerSaccade)}
     </div>
   );
 }
 
-function renderLineText(text: string, isHeading: boolean, showOVP?: boolean, saccadeLength?: number): JSX.Element {
+function renderLineText(
+  text: string,
+  isHeading: boolean,
+  showOVP?: boolean,
+  fixations?: number[],
+  animateFlow?: boolean,
+  timePerSaccade?: number,
+): JSX.Element {
   const className = isHeading ? 'saccade-heading' : 'saccade-body';
 
-  if (!showOVP || !saccadeLength || !text) {
+  if (!showOVP || !fixations || fixations.length === 0 || !text) {
     return <span className={className}>{text || '\u00A0'}</span>;
   }
 
-  const fixations = computeLineFixations(text, saccadeLength);
-  if (fixations.length === 0) {
-    return <span className={className}>{text}</span>;
-  }
-
-  // Build segments: split text around each fixation character index
   const segments: JSX.Element[] = [];
   let cursor = 0;
 
   for (let i = 0; i < fixations.length; i++) {
     const idx = fixations[i];
-    // Text before this fixation
     if (idx > cursor) {
       segments.push(<span key={`t${i}`}>{text.slice(cursor, idx)}</span>);
     }
-    // The fixation character
-    segments.push(<span key={`f${i}`} className="saccade-fixation">{text[idx]}</span>);
+    if (animateFlow && timePerSaccade) {
+      const style = {
+        animationDuration: `${timePerSaccade}ms`,
+        animationDelay: `${i * timePerSaccade}ms`,
+      };
+      segments.push(
+        <span key={`f${i}`} className="saccade-fixation saccade-fixation-active" style={style}>
+          {text[idx]}
+        </span>
+      );
+    } else {
+      segments.push(<span key={`f${i}`} className="saccade-fixation">{text[idx]}</span>);
+    }
     cursor = idx + 1;
   }
 
-  // Remaining text after last fixation
   if (cursor < text.length) {
     segments.push(<span key="tail">{text.slice(cursor)}</span>);
   }
