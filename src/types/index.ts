@@ -1,5 +1,5 @@
 // Display mode: how text is presented
-export type DisplayMode = 'rsvp' | 'saccade' | 'prediction' | 'recall';
+export type DisplayMode = 'rsvp' | 'saccade' | 'prediction' | 'recall' | 'training';
 
 // Token/chunk mode: how text is chunked
 export type TokenMode = 'word' | 'custom';
@@ -67,6 +67,15 @@ export interface PredictionStats {
   totalWords: number;
   exactMatches: number;
   averageLoss: number;
+}
+
+export interface TrainingParagraphResult {
+  paragraphIndex: number;
+  score: number;       // 0-1 (1 = perfect)
+  wpm: number;         // WPM used for this paragraph
+  repeated: boolean;
+  wordCount: number;
+  exactMatches: number;
 }
 
 export interface Feed {

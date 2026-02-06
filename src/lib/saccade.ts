@@ -168,7 +168,7 @@ function wrapParagraph(text: string, lineWidth: number): SaccadeLine[] {
  * Respects paragraph breaks (double newlines) and markdown headings.
  * Collapses single newlines into spaces to reflow ragged PDF extractions.
  */
-function flowTextIntoLines(text: string, lineWidth: number): SaccadeLine[] {
+export function flowTextIntoLines(text: string, lineWidth: number): SaccadeLine[] {
   const normalized = normalizeText(text);
 
   // Split into blocks (paragraphs/headings separated by blank lines)
@@ -239,7 +239,7 @@ function groupIntoPages(lines: SaccadeLine[], linesPerPage: number): { lines: Sa
 /**
  * Count words in a string.
  */
-function countWords(text: string): number {
+export function countWords(text: string): number {
   return text.split(/\s+/).filter(w => w.length > 0).length;
 }
 
@@ -356,4 +356,162 @@ export function tokenizeRecall(
   }
 
   return { pages, chunks: allChunks };
+}
+
+/**
+ * Split article text into paragraphs for training mode.
+ * Splits on double newlines, strips markdown heading markers,
+ * merges short paragraphs with next, splits long at sentence boundaries.
+ */
+export function segmentIntoParagraphs(
+  text: string,
+  minChars: number = 50,
+  maxChars: number = 750
+): string[] {
+  const normalized = normalizeText(text);
+
+  const rawBlocks = normalized
+    .split(/\n\s*\n/)
+    .map(b => b.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
+    .map(b => b.replace(/^#{1,6}\s+/, ''))  // strip heading markers
+    .filter(b => b.length > 0);
+
+  if (rawBlocks.length === 0) return [];
+
+  // Merge short blocks with next
+  const merged: string[] = [];
+  let buffer = '';
+
+  for (const block of rawBlocks) {
+    if (buffer.length > 0) {
+      buffer += ' ' + block;
+    } else {
+      buffer = block;
+    }
+
+    if (buffer.length >= minChars) {
+      merged.push(buffer);
+      buffer = '';
+    }
+  }
+  // Flush remaining buffer
+  if (buffer.length > 0) {
+    if (merged.length > 0) {
+      merged[merged.length - 1] += ' ' + buffer;
+    } else {
+      merged.push(buffer);
+    }
+  }
+
+  // Split long paragraphs at sentence boundaries
+  const result: string[] = [];
+  for (const para of merged) {
+    if (para.length <= maxChars) {
+      result.push(para);
+      continue;
+    }
+
+    // Split at sentence endings
+    const sentences = para.match(/[^.!?]+[.!?]+\s*/g) || [para];
+    let current = '';
+    for (const sentence of sentences) {
+      if (current.length > 0 && current.length + sentence.length > maxChars) {
+        result.push(current.trim());
+        current = sentence;
+      } else {
+        current += sentence;
+      }
+    }
+    if (current.trim().length > 0) {
+      result.push(current.trim());
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Tokenize a single paragraph for saccade-style reading display.
+ * Returns a single page and one chunk per non-blank line.
+ */
+export function tokenizeParagraphSaccade(
+  text: string
+): { page: SaccadePage; chunks: Chunk[] } {
+  const lines = flowTextIntoLines(text, SACCADE_LINE_WIDTH);
+  const chunks: Chunk[] = [];
+  const lineChunks: Chunk[][] = [];
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+
+    if (line.type === 'blank' || line.text.trim().length === 0) {
+      lineChunks.push([]);
+      continue;
+    }
+
+    const chunk: Chunk = {
+      text: line.text,
+      wordCount: countWords(line.text),
+      orpIndex: 0,
+      saccade: {
+        pageIndex: 0,
+        lineIndex,
+        startChar: 0,
+        endChar: line.text.length,
+      },
+    };
+
+    lineChunks.push([chunk]);
+    chunks.push(chunk);
+  }
+
+  const page: SaccadePage = { lines, lineChunks };
+  return { page, chunks };
+}
+
+/**
+ * Tokenize a single paragraph for recall display.
+ * Same line layout as saccade, but one chunk per word.
+ */
+export function tokenizeParagraphRecall(
+  text: string
+): { page: SaccadePage; chunks: Chunk[] } {
+  const lines = flowTextIntoLines(text, SACCADE_LINE_WIDTH);
+  const chunks: Chunk[] = [];
+  const pageLineChunks: Chunk[][] = [];
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+
+    if (line.type === 'blank' || line.text.trim().length === 0) {
+      pageLineChunks.push([]);
+      continue;
+    }
+
+    const lineChunks: Chunk[] = [];
+    const wordRegex = /\S+/g;
+    let match;
+
+    while ((match = wordRegex.exec(line.text)) !== null) {
+      const word = match[0];
+      const chunk: Chunk = {
+        text: word,
+        wordCount: 1,
+        orpIndex: 0,
+        saccade: {
+          pageIndex: 0,
+          lineIndex,
+          startChar: match.index,
+          endChar: match.index + word.length,
+        },
+      };
+      lineChunks.push(chunk);
+      chunks.push(chunk);
+    }
+
+    pageLineChunks.push(lineChunks);
+  }
+
+  const page: SaccadePage = { lines, lineChunks: pageLineChunks };
+  return { page, chunks };
 }

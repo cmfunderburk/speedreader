@@ -94,7 +94,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
 
   const [rampEnabled, setRampEnabledState] = useState(initialRampEnabled);
 
-  const shouldAutoPlay = displayMode !== 'recall' && (displayMode !== 'saccade' || showPacer);
+  const shouldAutoPlay = displayMode !== 'recall' && displayMode !== 'training' && (displayMode !== 'saccade' || showPacer);
 
   const chunksRef = useRef<Chunk[]>(chunks);
   const indexRef = useRef(currentChunkIndex);
@@ -184,7 +184,9 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     charWidth: number,
     pageLines: number = SACCADE_LINES_PER_PAGE
   ): { chunks: Chunk[]; pages: SaccadePage[] } => {
-    if (dm === 'saccade') {
+    if (dm === 'training') {
+      return { chunks: [], pages: [] };
+    } else if (dm === 'saccade') {
       const result = tokenizeSaccade(content, pageLines);
       return { chunks: result.chunks, pages: result.pages };
     } else if (dm === 'recall') {
@@ -347,7 +349,10 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       );
       setSaccadePages(pages);
 
-      if (newDisplayMode === 'prediction') {
+      if (newDisplayMode === 'training') {
+        // Training manages its own state; just set empty chunks
+        setCurrentChunkIndex(0);
+      } else if (newDisplayMode === 'prediction') {
         // Entering prediction: load word index (from ref or localStorage)
         const savedIndex = predictionWordIndexRef.current ||
                            article.predictionPosition || 0;

@@ -77,7 +77,7 @@ export function ReaderControls({
   saccadeLength,
   onSaccadeLengthChange,
 }: ReaderControlsProps) {
-  const isSelfPaced = displayMode === 'prediction' || displayMode === 'recall';
+  const isSelfPaced = displayMode === 'prediction' || displayMode === 'recall' || displayMode === 'training';
   const showChunks = !isSelfPaced && displayMode !== 'saccade';
 
   return (
@@ -169,6 +169,7 @@ export function ReaderControls({
             <option value="saccade">Saccade</option>
             <option value="prediction">Prediction</option>
             <option value="recall">Recall</option>
+            <option value="training">Training</option>
           </select>
         </label>
 

@@ -144,6 +144,35 @@ export function markArticleAsRead(articleId: string): void {
 }
 
 /**
+ * Per-paragraph training history, keyed by article ID.
+ * Each entry stores the most recent score for a paragraph index.
+ */
+export interface TrainingHistoryEntry {
+  score: number;    // 0-1
+  wpm: number;
+  timestamp: number;
+}
+
+export type TrainingHistory = Record<number, TrainingHistoryEntry>;
+
+function trainingKey(articleId: string): string {
+  return `speedread_training_${articleId}`;
+}
+
+export function loadTrainingHistory(articleId: string): TrainingHistory {
+  try {
+    const data = localStorage.getItem(trainingKey(articleId));
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveTrainingHistory(articleId: string, history: TrainingHistory): void {
+  localStorage.setItem(trainingKey(articleId), JSON.stringify(history));
+}
+
+/**
  * Generate a unique ID.
  */
 export function generateId(): string {

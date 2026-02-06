@@ -12,6 +12,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { PredictionReader } from './PredictionReader';
 import { PredictionStats } from './PredictionStats';
 import { RecallReader } from './RecallReader';
+import { TrainingReader } from './TrainingReader';
 import { useRSVP } from '../hooks/useRSVP';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { calculateRemainingTime, formatTime, calculateProgress } from '../lib/rsvp';
@@ -72,7 +73,7 @@ export function App() {
 
   // Keyboard shortcuts
   useKeyboard({
-    onSpace: (rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall') ? undefined : rsvp.toggle,
+    onSpace: (rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall' || rsvp.displayMode === 'training') ? undefined : rsvp.toggle,
     onLeft: rsvp.prev,
     onRight: rsvp.next,
     onBracketLeft: () => rsvp.setWpm(Math.max(100, rsvp.wpm - 10)),
@@ -265,7 +266,19 @@ export function App() {
       <main className="app-main">
         {view === 'reader' && (
           <>
-            {rsvp.displayMode === 'prediction' ? (
+            {rsvp.displayMode === 'training' && rsvp.article ? (
+              <div className="training-container">
+                <TrainingReader
+                  article={rsvp.article}
+                  initialWpm={rsvp.wpm}
+                  saccadeShowOVP={displaySettings.saccadeShowOVP}
+                  saccadeShowSweep={displaySettings.saccadeShowSweep}
+                  saccadeLength={displaySettings.saccadeLength}
+                  onClose={() => rsvp.setDisplayMode('rsvp')}
+                  onWpmChange={rsvp.setWpm}
+                />
+              </div>
+            ) : rsvp.displayMode === 'prediction' ? (
               <div className="prediction-container">
                 <PredictionStats stats={rsvp.predictionStats} />
                 <PredictionReader
@@ -312,7 +325,7 @@ export function App() {
               />
             )}
 
-            {rsvp.displayMode !== 'prediction' && rsvp.displayMode !== 'recall' && (
+            {rsvp.displayMode !== 'prediction' && rsvp.displayMode !== 'recall' && rsvp.displayMode !== 'training' && (
               <ProgressBar progress={progress} onChange={handleProgressChange} />
             )}
 
@@ -321,7 +334,9 @@ export function App() {
                 <>
                   <span className="article-title">{rsvp.article.title}</span>
                   <span className="article-meta">
-                    {rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall' ? (
+                    {rsvp.displayMode === 'training' ? (
+                      `${rsvp.article.source} • Training Mode`
+                    ) : rsvp.displayMode === 'prediction' || rsvp.displayMode === 'recall' ? (
                       `${rsvp.article.source} • ${rsvp.currentChunkIndex} / ${rsvp.chunks.length} words`
                     ) : (
                       `${rsvp.article.source} • ${formattedWordCount} words • ${remainingTime} remaining • ${rsvp.effectiveWpm} WPM`

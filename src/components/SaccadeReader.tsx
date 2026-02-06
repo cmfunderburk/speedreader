@@ -46,7 +46,7 @@ export function SaccadeReader({ page, chunk, showPacer, wpm, saccadeShowOVP, sac
   );
 }
 
-interface SaccadeLineProps {
+export interface SaccadeLineProps {
   line: SaccadeLine;
   lineIndex: number;
   isActiveLine: boolean;
@@ -58,7 +58,7 @@ interface SaccadeLineProps {
   saccadeLength?: number;
 }
 
-function SaccadeLineComponent({ line, lineIndex, isActiveLine, isFutureLine, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadeLength }: SaccadeLineProps) {
+export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isFutureLine, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadeLength }: SaccadeLineProps) {
   if (line.type === 'blank') {
     return (
       <div className="saccade-line">
