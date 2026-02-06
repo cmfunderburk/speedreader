@@ -30,7 +30,6 @@ export async function extractEpubText(
 ): Promise<EpubExtractResult> {
   const opts = { ...defaultEpubOptions, ...options }
   const EPub = require('epub')
-  const { JSDOM } = require('jsdom')
 
   return new Promise((resolve, reject) => {
     const epub = new EPub(filePath)
@@ -110,6 +109,7 @@ export async function extractEpubText(
   })
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getChapterText(epub: any, chapterId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     epub.getChapter(chapterId, (err: Error | null, html: string) => {

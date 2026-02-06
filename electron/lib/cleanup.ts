@@ -229,7 +229,7 @@ function removePageNumbers(text: string): string {
   text = text.replace(/^\s*(i{1,3}|iv|vi{0,3}|ix|xi{0,2})\s*$/gim, '')
 
   // "[5]" or "(5)" page numbers
-  text = text.replace(/^\s*[\[(]\d{1,4}[\])]\s*$/gm, '')
+  text = text.replace(/^\s*[[(]\d{1,4}[\])]\s*$/gm, '')
 
   // URL lines (common in web-to-PDF conversions)
   text = text.replace(/^\s*https?:\/\/[^\s]+\s*$/gm, '')
@@ -375,7 +375,6 @@ function isParagraphStart(line: string): boolean {
 function removeAffiliations(text: string): string {
   const lines = text.split('\n')
   const result: string[] = []
-  let inAffiliationBlock = false
   let linesSinceStart = 0
   const affiliationLimit = 30 // Only check first 30 lines for affiliations
 
