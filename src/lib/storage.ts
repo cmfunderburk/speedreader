@@ -23,12 +23,11 @@ export interface Settings {
   rsvpShowORP: boolean;
   saccadeShowOVP: boolean;
   saccadeShowSweep: boolean;
-  saccadeShowNextORP: boolean;
   saccadeLength: number;
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  defaultWpm: 400,
+  defaultWpm: 300,
   defaultMode: 'word',
   customCharWidth: 8,
   rsvpFontSize: 2.5,
@@ -44,7 +43,6 @@ const DEFAULT_SETTINGS: Settings = {
   rsvpShowORP: true,
   saccadeShowOVP: true,
   saccadeShowSweep: true,
-  saccadeShowNextORP: true,
   saccadeLength: 10,
 };
 

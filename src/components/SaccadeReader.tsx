@@ -1,5 +1,5 @@
 import type { Chunk, SaccadePage, SaccadeLine } from '../types';
-import { computeLineFixations } from '../lib/saccade';
+import { computeLineFixations, calculateSaccadeLineDuration } from '../lib/saccade';
 
 interface SaccadeReaderProps {
   page: SaccadePage | null;
@@ -8,11 +8,10 @@ interface SaccadeReaderProps {
   wpm: number;
   saccadeShowOVP?: boolean;
   saccadeShowSweep?: boolean;
-  saccadeShowNextORP?: boolean;
   saccadeLength?: number;
 }
 
-export function SaccadeReader({ page, chunk, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadeShowNextORP, saccadeLength }: SaccadeReaderProps) {
+export function SaccadeReader({ page, chunk, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadeLength }: SaccadeReaderProps) {
   if (!page) {
     return (
       <div className="reader saccade-reader">
@@ -39,7 +38,6 @@ export function SaccadeReader({ page, chunk, showPacer, wpm, saccadeShowOVP, sac
             wpm={wpm}
             saccadeShowOVP={saccadeShowOVP}
             saccadeShowSweep={saccadeShowSweep}
-            saccadeShowNextORP={saccadeShowNextORP}
             saccadeLength={saccadeLength}
           />
         ))}
@@ -57,11 +55,10 @@ interface SaccadeLineProps {
   wpm: number;
   saccadeShowOVP?: boolean;
   saccadeShowSweep?: boolean;
-  saccadeShowNextORP?: boolean;
   saccadeLength?: number;
 }
 
-function SaccadeLineComponent({ line, lineIndex, isActiveLine, isFutureLine, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadeShowNextORP, saccadeLength }: SaccadeLineProps) {
+function SaccadeLineComponent({ line, lineIndex, isActiveLine, isFutureLine, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadeLength }: SaccadeLineProps) {
   if (line.type === 'blank') {
     return (
       <div className="saccade-line">
@@ -71,44 +68,40 @@ function SaccadeLineComponent({ line, lineIndex, isActiveLine, isFutureLine, sho
   }
 
   const isHeading = line.type === 'heading';
+  const textLength = line.text.length;
 
-  // Compute fixations and timing
+  // Compute fixations for ORP positioning
   const fixations = (saccadeLength && line.text)
     ? computeLineFixations(line.text, saccadeLength)
     : [];
-  const timePerSaccade = (wpm && saccadeLength)
-    ? (saccadeLength / 5) * (60000 / wpm)
-    : 0;
-  const lineDuration = fixations.length * timePerSaccade;
 
-  const useSweepBar = showPacer && saccadeShowSweep !== false && isActiveLine && lineDuration > 0 && fixations.length > 0;
-  const animateFlow = showPacer && isActiveLine && saccadeShowOVP && timePerSaccade > 0;
+  // Character-based line duration: 5 chars = 1 word at configured WPM
+  const lineDuration = calculateSaccadeLineDuration(textLength, wpm);
 
-  // Generate keyframes for sweep bar and per-fixation visibility
+  const useSweepBar = showPacer && saccadeShowSweep !== false && isActiveLine && lineDuration > 0;
+
+  // Sweep-synced ORP decoloring: ORPs start amber, turn plain as sweep passes
+  const sweepDecolors = useSweepBar && saccadeShowOVP && fixations.length > 0;
+
+  // Static amber ORPs: all lines when pacer off, or current + future lines when pacer on
+  const showStaticOVP = saccadeShowOVP && !sweepDecolors && (
+    !showPacer || isActiveLine || isFutureLine
+  );
+
+  // Generate keyframes
   const keyframeBlocks: string[] = [];
 
   if (useSweepBar) {
-    const sweepName = `sweep-${lineIndex}`;
-    const steps = fixations.map((charIdx, i) => {
-      const timePct = ((i / fixations.length) * 100).toFixed(2);
-      return `${timePct}% { width: ${(charIdx + 0.5).toFixed(1)}ch; }`;
-    });
-    steps.push(`100% { width: ${(fixations[fixations.length - 1] + 0.5).toFixed(1)}ch; }`);
-    keyframeBlocks.push(`@keyframes ${sweepName} { ${steps.join(' ')} }`);
+    keyframeBlocks.push(
+      `@keyframes sweep-${lineIndex} { from { width: 0ch; } to { width: ${textLength}ch; } }`
+    );
   }
 
-  if (animateFlow && fixations.length > 0) {
-    keyframeBlocks.push(generateFixationKeyframes(lineIndex, fixations.length, saccadeShowNextORP !== false));
+  if (sweepDecolors) {
+    keyframeBlocks.push(generateDecolorKeyframes(lineIndex, fixations, textLength));
   }
 
-  // Static amber ORPs: all lines when pacer off, next line when lookahead on,
-  // or active line when not animating
-  const showStaticOVP = saccadeShowOVP && !animateFlow && (
-    !showPacer
-    || isActiveLine
-    || (isFutureLine && saccadeShowNextORP !== false)
-  );
-  const animConfig = animateFlow ? { lineIndex, lineDuration } : undefined;
+  const decolorConfig = sweepDecolors ? { lineIndex, lineDuration } : undefined;
 
   const lineClasses = [
     'saccade-line',
@@ -122,56 +115,30 @@ function SaccadeLineComponent({ line, lineIndex, isActiveLine, isFutureLine, sho
       {useSweepBar && (
         <span
           className="saccade-sweep"
-          style={{ animation: `sweep-${lineIndex} ${lineDuration}ms step-end both` }}
+          style={{ animation: `sweep-${lineIndex} ${lineDuration}ms linear both` }}
         />
       )}
-      {renderLineText(line.text, isHeading, showStaticOVP || animateFlow, fixations, animConfig)}
+      {renderLineText(line.text, isHeading, showStaticOVP || sweepDecolors, fixations, decolorConfig)}
     </div>
   );
 }
 
 /**
- * Generate per-fixation @keyframes rules. When showNext is true, all future
- * fixations start amber, turn red when current, then revert to plain text.
- * When showNext is false, only the red "current" phase is visible; all other
- * fixations remain plain text.
- *
- * Uses paired keyframes with linear timing to create sharp transitions.
- * Each phase holds a value over a percentage range (e.g., "20%, 39.99%"),
- * with a tiny 0.01% gap between ranges for effectively instant switches.
+ * Generate per-ORP @keyframes that transition from amber to plain text
+ * when the continuous sweep bar reaches each ORP's character position.
+ * Uses paired keyframes with a 0.01% gap for sharp transitions.
  */
-function generateFixationKeyframes(lineIndex: number, N: number, showNext: boolean): string {
-  const plain = 'color: var(--text-primary); font-weight: normal';
+function generateDecolorKeyframes(lineIndex: number, fixations: number[], textLength: number): string {
   const amber = 'color: rgba(224, 176, 56, 0.85); font-weight: 600';
-  const red = 'color: var(--accent); font-weight: 600';
+  const plain = 'color: var(--text-primary); font-weight: normal';
   const eps = 0.01;
-
-  const boundary = (step: number) => step / N * 100;
   const fmt = (v: number) => v.toFixed(2);
-  const rangeEnd = (step: number) => step >= N ? '100' : fmt(boundary(step) - eps);
 
-  const rules: string[] = [];
-
-  for (let i = 0; i < N; i++) {
-    const kf: string[] = [];
-
-    // Before-current phase: amber (lookahead) or plain
-    if (i > 0) {
-      kf.push(`0%, ${rangeEnd(i)}% { ${showNext ? amber : plain} }`);
-    }
-
-    // Red "current" phase
-    kf.push(`${fmt(boundary(i))}%, ${rangeEnd(i + 1)}% { ${red} }`);
-
-    // Plain text after current phase
-    if (i + 1 < N) {
-      kf.push(`${fmt(boundary(i + 1))}%, 100% { ${plain} }`);
-    }
-
-    rules.push(`@keyframes fix-${lineIndex}-${i} { ${kf.join(' ')} }`);
-  }
-
-  return rules.join(' ');
+  return fixations.map((charIdx, i) => {
+    const pct = (charIdx / textLength) * 100;
+    const kf = `0%, ${fmt(pct)}% { ${amber} } ${fmt(pct + eps)}%, 100% { ${plain} }`;
+    return `@keyframes orp-${lineIndex}-${i} { ${kf} }`;
+  }).join(' ');
 }
 
 function renderLineText(
@@ -179,7 +146,7 @@ function renderLineText(
   isHeading: boolean,
   showOVP?: boolean,
   fixations?: number[],
-  animConfig?: { lineIndex: number; lineDuration: number },
+  decolorConfig?: { lineIndex: number; lineDuration: number },
 ): JSX.Element {
   const className = isHeading ? 'saccade-heading' : 'saccade-body';
 
@@ -195,9 +162,9 @@ function renderLineText(
     if (idx > cursor) {
       segments.push(<span key={`t${i}`}>{text.slice(cursor, idx)}</span>);
     }
-    if (animConfig) {
+    if (decolorConfig) {
       const style = {
-        animation: `fix-${animConfig.lineIndex}-${i} ${animConfig.lineDuration}ms linear both`,
+        animation: `orp-${decolorConfig.lineIndex}-${i} ${decolorConfig.lineDuration}ms linear both`,
       };
       segments.push(
         <span key={`f${i}`} className="saccade-fixation" style={style}>

@@ -35,8 +35,6 @@ interface ReaderControlsProps {
   onSaccadeShowOVPChange: (enabled: boolean) => void;
   saccadeShowSweep: boolean;
   onSaccadeShowSweepChange: (enabled: boolean) => void;
-  saccadeShowNextORP: boolean;
-  onSaccadeShowNextORPChange: (enabled: boolean) => void;
   saccadeLength: number;
   onSaccadeLengthChange: (length: number) => void;
 }
@@ -76,8 +74,6 @@ export function ReaderControls({
   onSaccadeShowOVPChange,
   saccadeShowSweep,
   onSaccadeShowSweepChange,
-  saccadeShowNextORP,
-  onSaccadeShowNextORPChange,
   saccadeLength,
   onSaccadeLengthChange,
 }: ReaderControlsProps) {
@@ -233,16 +229,6 @@ export function ReaderControls({
               />
               <span className="control-label">Sweep</span>
             </label>
-            {saccadeShowOVP && (
-              <label className="control-group control-checkbox">
-                <input
-                  type="checkbox"
-                  checked={saccadeShowNextORP}
-                  onChange={e => onSaccadeShowNextORPChange(e.target.checked)}
-                />
-                <span className="control-label">Lookahead</span>
-              </label>
-            )}
             {saccadeShowOVP && (
               <label className="control-group">
                 <span className="control-label">Saccade:</span>

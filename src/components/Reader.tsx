@@ -14,14 +14,13 @@ interface ReaderProps {
   showORP?: boolean;
   saccadeShowOVP?: boolean;
   saccadeShowSweep?: boolean;
-  saccadeShowNextORP?: boolean;
   saccadeLength?: number;
 }
 
-export function Reader({ chunk, displayMode, saccadePage, showPacer = true, wpm, colorPhase, showORP = true, saccadeShowOVP, saccadeShowSweep, saccadeShowNextORP, saccadeLength }: ReaderProps) {
+export function Reader({ chunk, displayMode, saccadePage, showPacer = true, wpm, colorPhase, showORP = true, saccadeShowOVP, saccadeShowSweep, saccadeLength }: ReaderProps) {
   // Saccade mode uses its own reader component
   if (displayMode === 'saccade') {
-    return <SaccadeReader page={saccadePage ?? null} chunk={chunk} showPacer={showPacer} wpm={wpm} saccadeShowOVP={saccadeShowOVP} saccadeShowSweep={saccadeShowSweep} saccadeShowNextORP={saccadeShowNextORP} saccadeLength={saccadeLength} />;
+    return <SaccadeReader page={saccadePage ?? null} chunk={chunk} showPacer={showPacer} wpm={wpm} saccadeShowOVP={saccadeShowOVP} saccadeShowSweep={saccadeShowSweep} saccadeLength={saccadeLength} />;
   }
   // No article loaded
   if (!chunk) {

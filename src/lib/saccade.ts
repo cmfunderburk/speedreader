@@ -4,6 +4,15 @@ import { normalizeText, calculateORP } from './tokenizer';
 export const SACCADE_LINE_WIDTH = 80;
 export const SACCADE_LINES_PER_PAGE = 15;
 
+/**
+ * Calculate how long a saccade line should be displayed, in milliseconds.
+ * Uses character count as the basis: 5 characters = 1 word at the given WPM.
+ */
+export function calculateSaccadeLineDuration(textLength: number, wpm: number): number {
+  if (textLength <= 0 || wpm <= 0) return 0;
+  return (textLength / 5) * (60000 / wpm);
+}
+
 // --- Fixation scoring model ---
 // See docs/saccade/01-scoring-function-v1.md for design rationale.
 

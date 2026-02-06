@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { Chunk, TokenMode, Article, SaccadePage, DisplayMode, PredictionStats, PredictionResult, RampCurve } from '../types';
 import { tokenize } from '../lib/tokenizer';
-import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE, computeLineFixations } from '../lib/saccade';
+import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE, calculateSaccadeLineDuration } from '../lib/saccade';
 import { calculateDisplayTime, getEffectiveWpm } from '../lib/rsvp';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
 import { isExactMatch } from '../lib/levenshtein';
@@ -150,12 +150,9 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       );
     }
 
-    // Saccade mode: use fixation-based timing to match visual pacer
+    // Saccade mode: character-based timing to match continuous sweep
     if (displayModeRef.current === 'saccade' && chunk.text) {
-      const sl = saccadeLengthRef.current;
-      const fixations = computeLineFixations(chunk.text, sl);
-      const timePerSaccade = (sl / 5) * (60000 / effectiveWpm);
-      return fixations.length * timePerSaccade;
+      return calculateSaccadeLineDuration(chunk.text.length, effectiveWpm);
     }
 
     return calculateDisplayTime(chunk, effectiveWpm);
