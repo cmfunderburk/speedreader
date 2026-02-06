@@ -47,6 +47,12 @@ export function computeLineFixations(lineText: string, saccadeLength: number): n
 
     if (bestIdx === -1) break; // no more words
 
+    // Skip short function words: if best candidate is ≤3 chars
+    // and a following word exists, prefer the following word
+    if (words[bestIdx].word.length <= 3 && bestIdx + 1 < words.length) {
+      bestIdx++;
+    }
+
     fixations.push(words[bestIdx].orpPos);
     lastFixIdx = bestIdx;
   }
