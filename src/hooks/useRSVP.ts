@@ -155,7 +155,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       return calculateSaccadeLineDuration(chunk.text.length, effectiveWpm);
     }
 
-    return calculateDisplayTime(chunk, effectiveWpm);
+    return calculateDisplayTime(chunk, effectiveWpm, modeRef.current);
   }, [getElapsedPlayTimeMs]);
 
   // Keep refs in sync with state
@@ -169,6 +169,22 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   useEffect(() => { showPacerRef.current = showPacer; }, [showPacer]);
   useEffect(() => { linesPerPageRef.current = linesPerPage; }, [linesPerPage]);
   useEffect(() => { saccadeLengthRef.current = saccadeLength; }, [saccadeLength]);
+
+  // Retokenize when saccadeLength changes in custom RSVP mode
+  useEffect(() => {
+    if (article && mode === 'custom' && displayMode === 'rsvp') {
+      const { chunks: newChunks, pages } = retokenize(
+        article.content, displayMode, mode, saccadeLength, linesPerPageRef.current
+      );
+      setSaccadePages(pages);
+      const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
+      const newIndex = Math.floor(progress * newChunks.length);
+      setChunks(newChunks);
+      setCurrentChunkIndex(Math.min(newIndex, newChunks.length - 1));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to saccadeLength changes
+  }, [saccadeLength]);
+
   useEffect(() => { rampEnabledRef.current = rampEnabled; }, [rampEnabled]);
   useEffect(() => { rampCurveRef.current = rampCurve; }, [rampCurve]);
   useEffect(() => { rampStartPercentRef.current = rampStartPercent; }, [rampStartPercent]);
@@ -181,7 +197,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     content: string,
     dm: DisplayMode,
     tm: TokenMode,
-    charWidth: number,
+    sacLen: number,
     pageLines: number = SACCADE_LINES_PER_PAGE
   ): { chunks: Chunk[]; pages: SaccadePage[] } => {
     if (dm === 'training') {
@@ -197,7 +213,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       const newChunks = tokenize(content, 'word');
       return { chunks: newChunks, pages: [] };
     } else {
-      const newChunks = tokenize(content, tm, tm === 'custom' ? charWidth : undefined);
+      const newChunks = tokenize(content, tm, tm === 'custom' ? sacLen : undefined);
       return { chunks: newChunks, pages: [] };
     }
   }, []);
@@ -313,7 +329,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         article.content,
         displayMode,
         newMode,
-        customCharWidthRef.current,
+        saccadeLengthRef.current,
         linesPerPageRef.current
       );
       setSaccadePages(pages);
@@ -344,7 +360,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         article.content,
         newDisplayMode,
         effectiveMode,
-        customCharWidthRef.current,
+        saccadeLengthRef.current,
         linesPerPageRef.current
       );
       setSaccadePages(pages);
@@ -384,23 +400,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
 
   const setCustomCharWidth = useCallback((width: number) => {
     setCustomCharWidthState(width);
-    if (article && mode === 'custom') {
-      const { chunks: newChunks, pages } = retokenize(
-        article.content,
-        displayMode,
-        'custom',
-        width,
-        linesPerPageRef.current
-      );
-      setSaccadePages(pages);
-
-      // Try to preserve approximate position
-      const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
-      const newIndex = Math.floor(progress * newChunks.length);
-      setChunks(newChunks);
-      setCurrentChunkIndex(Math.min(newIndex, newChunks.length - 1));
-    }
-  }, [article, mode, displayMode, chunks.length, currentChunkIndex, retokenize]);
+  }, []);
 
   const setLinesPerPage = useCallback((lines: number) => {
     setLinesPerPageState(lines);
@@ -409,7 +409,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         article.content,
         displayMode,
         mode,
-        customCharWidthRef.current,
+        saccadeLengthRef.current,
         lines
       );
       setSaccadePages(pages);
@@ -431,7 +431,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       newArticle.content,
       displayModeRef.current,
       modeRef.current,
-      customCharWidthRef.current,
+      saccadeLengthRef.current,
       linesPerPageRef.current
     );
     setSaccadePages(pages);

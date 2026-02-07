@@ -28,10 +28,33 @@ export function stripMarkdown(text: string): string {
     .trim();
 }
 
-// Major punctuation that always ends a chunk
-const MAJOR_PUNCTUATION = /[.!?;]/;
-// Minor punctuation that can end a chunk
-const MINOR_PUNCTUATION = /[,:\-—–]/;
+// --- Word scoring model (shared with saccade fixation placement) ---
+// See docs/saccade/01-scoring-function-v1.md for design rationale.
+
+export const FUNCTION_WORDS: ReadonlySet<string> = new Set([
+  'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'is', 'it', 'or', 'as',
+  'by', 'if', 'so', 'no', 'do', 'be', 'am', 'are', 'was', 'were', 'he',
+  'she', 'we', 'they', 'you', 'my', 'your', 'our', 'us', 'up', 'and',
+  'for', 'but', 'nor', 'yet', 'with', 'from', 'into', 'onto', 'this',
+  'that', 'these', 'those', 'its',
+]);
+
+const FUNCTION_WORD_PENALTY = 1.25;
+
+export function lengthPenalty(len: number): number {
+  if (len <= 1) return 5.0;
+  if (len === 2) return 4.0;
+  if (len === 3) return 2.5;
+  if (len === 4) return 1.5;
+  if (len === 5) return 0.5;
+  return 0.0;
+}
+
+export function wordPenalty(word: string): number {
+  const fp = FUNCTION_WORDS.has(word.toLowerCase().replace(/[^a-z]/g, ''))
+    ? FUNCTION_WORD_PENALTY : 0;
+  return lengthPenalty(word.length) + fp;
+}
 
 /**
  * Calculate the Optimal Reading Point (ORP) index within a chunk.
@@ -86,20 +109,6 @@ function tokenizeWords(text: string): string[] {
 }
 
 /**
- * Check if a word ends with major punctuation.
- */
-function endsWithMajorPunctuation(word: string): boolean {
-  return MAJOR_PUNCTUATION.test(word[word.length - 1]);
-}
-
-/**
- * Check if a word ends with minor punctuation.
- */
-function endsWithMinorPunctuation(word: string): boolean {
-  return MINOR_PUNCTUATION.test(word[word.length - 1]);
-}
-
-/**
  * Tokenize text in Word mode - one word per chunk.
  */
 function tokenizeWordMode(text: string): Chunk[] {
@@ -111,65 +120,146 @@ function tokenizeWordMode(text: string): Chunk[] {
   }));
 }
 
+// Minimum quality threshold for fixation targets.
+// Words with wordPenalty >= this are never selected as fixation anchors;
+// they get absorbed into adjacent chunks instead. This prevents function
+// words and very short words from becoming standalone chunks.
+//
+// Excluded (penalty >= 2.0): 1-3 char words always, 4-char function words
+// Allowed: 4-char content words (1.5), 5-char function words (1.75), 6+ all (0-1.25)
+const MIN_FIXATION_PENALTY = 2.0;
+
 /**
- * Tokenize text by character width - accumulate words until max chars reached.
- * Respects punctuation as natural break points.
+ * Fixation-aligned chunking: uses the saccade scoring model to place fixation
+ * points through the text, then partitions words into chunks around those
+ * fixation points. Each chunk contains the fixation word (a content word) plus
+ * any preceding non-fixation words absorbed from the gap since the previous
+ * fixation. This models the perceptual span during a saccade fixation.
+ *
+ * The ORP for each chunk is placed on the fixation word, matching where the
+ * eye would actually land during real reading.
  *
  * @param text - Text to tokenize
- * @param maxChars - Target maximum character width
+ * @param saccadeLength - Target character distance between fixation points (7-15)
  */
-function tokenizeByCharWidth(text: string, maxChars: number): Chunk[] {
+function tokenizeByFixation(text: string, saccadeLength: number): Chunk[] {
   const words = tokenizeWords(text);
-  const chunks: Chunk[] = [];
-
-  let currentWords: string[] = [];
-  let currentLength = 0;
-
-  for (const word of words) {
-    const wouldBeLength = currentLength + (currentWords.length > 0 ? 1 : 0) + word.length;
-
-    // If adding this word exceeds max and we have content, flush first
-    if (wouldBeLength > maxChars && currentWords.length > 0) {
-      const chunkText = currentWords.join(' ');
-      chunks.push({
-        text: chunkText,
-        wordCount: currentWords.length,
-        orpIndex: calculateORP(chunkText),
-      });
-      currentWords = [];
-      currentLength = 0;
-    }
-
-    // Add word to current chunk
-    currentWords.push(word);
-    currentLength = currentWords.join(' ').length;
-
-    // Check for punctuation-based breaks
-    const hitMajorPunct = endsWithMajorPunctuation(word);
-    const hitMinorPunct = endsWithMinorPunctuation(word);
-    const atGoodBreakPoint = currentLength >= maxChars * 0.6; // 60% of target
-
-    // Break on major punctuation, or minor punctuation if we're past 60% of target
-    if (hitMajorPunct || (hitMinorPunct && atGoodBreakPoint)) {
-      const chunkText = currentWords.join(' ');
-      chunks.push({
-        text: chunkText,
-        wordCount: currentWords.length,
-        orpIndex: calculateORP(chunkText),
-      });
-      currentWords = [];
-      currentLength = 0;
-    }
+  if (words.length === 0) return [];
+  if (words.length === 1) {
+    return [{ text: words[0], wordCount: 1, orpIndex: calculateORP(words[0]) }];
   }
 
-  // Flush remaining words
-  if (currentWords.length > 0) {
-    const chunkText = currentWords.join(' ');
+  // Build word layout with cumulative character positions
+  const layout: { word: string; startPos: number; orpPos: number }[] = [];
+  let pos = 0;
+  for (const word of words) {
+    layout.push({
+      word,
+      startPos: pos,
+      orpPos: pos + calculateORP(word),
+    });
+    pos += word.length + 1; // +1 for space
+  }
+
+  // Scoring parameters (same as computeLineFixations in saccade.ts)
+  const aggression = Math.max(0, Math.min(1, (saccadeLength - 7) / 8));
+  const skipScale = 0.8 + 0.4 * aggression;
+  const maxJump = saccadeLength + 6;
+
+  // Helper: find best fixation candidate from a range, optionally quality-filtered
+  function findBest(
+    startFrom: number,
+    endBefore: number,
+    target: number,
+    lastPos: number,
+    limitToWindow: boolean,
+    requireQuality: boolean,
+  ): { idx: number; score: number; len: number } {
+    let bestIdx = -1;
+    let bestScore = Infinity;
+    let bestLen = 0;
+    for (let i = startFrom; i < endBefore; i++) {
+      if (limitToWindow && layout[i].orpPos - lastPos > maxJump) continue;
+      if (requireQuality && wordPenalty(layout[i].word) >= MIN_FIXATION_PENALTY) continue;
+      const score = Math.abs(layout[i].orpPos - target)
+        + skipScale * wordPenalty(layout[i].word);
+      if (score < bestScore - 0.001
+          || (Math.abs(score - bestScore) < 0.001 && layout[i].word.length > bestLen)) {
+        bestIdx = i;
+        bestScore = score;
+        bestLen = layout[i].word.length;
+      }
+    }
+    return { idx: bestIdx, score: bestScore, len: bestLen };
+  }
+
+  // First fixation: quality content word near start, using position 0 as anchor
+  const firstTarget = saccadeLength * 0.5;
+  let first = findBest(0, layout.length, firstTarget, 0, true, true);
+  if (first.idx === -1) first = findBest(0, layout.length, firstTarget, 0, false, true);
+  if (first.idx === -1) first = findBest(0, layout.length, firstTarget, 0, false, false);
+  const firstIdx = first.idx === -1 ? 0 : first.idx;
+
+  const fixationIndices: number[] = [firstIdx];
+  let lastFixIdx = firstIdx;
+
+  // Place subsequent fixations
+  while (true) {
+    const lastPos = layout[lastFixIdx].orpPos;
+    const target = lastPos + saccadeLength;
+
+    // 1. Try quality content words within maxJump window
+    let result = findBest(lastFixIdx + 1, layout.length, target, lastPos, true, true);
+
+    // 2. If nothing in window, extend search to all remaining content words
+    if (result.idx === -1) {
+      result = findBest(lastFixIdx + 1, layout.length, target, lastPos, false, true);
+    }
+
+    // 3. If still nothing (remaining text is all function words), accept any word
+    if (result.idx === -1) {
+      result = findBest(lastFixIdx + 1, layout.length, target, lastPos, false, false);
+    }
+
+    if (result.idx === -1) break;
+
+    fixationIndices.push(result.idx);
+    lastFixIdx = result.idx;
+  }
+
+  // Partition words into chunks around fixation points.
+  // Each chunk: [words from previous fixation + 1 .. current fixation]
+  // Words before first fixation are prepended to first chunk.
+  // Words after last fixation are appended to last chunk.
+  const chunks: Chunk[] = [];
+  let chunkStart = 0;
+
+  for (const fixIdx of fixationIndices) {
+    const chunkWords = words.slice(chunkStart, fixIdx + 1);
+    const chunkText = chunkWords.join(' ');
+
+    // ORP on the fixation word (last word in chunk)
+    const fixWordStartInChunk = chunkText.length - words[fixIdx].length;
+    const orpInChunk = fixWordStartInChunk + calculateORP(words[fixIdx]);
+
     chunks.push({
       text: chunkText,
-      wordCount: currentWords.length,
-      orpIndex: calculateORP(chunkText),
+      wordCount: chunkWords.length,
+      orpIndex: orpInChunk,
     });
+    chunkStart = fixIdx + 1;
+  }
+
+  // Trailing words after last fixation → append to last chunk
+  if (chunkStart < words.length) {
+    const trailingWords = words.slice(chunkStart);
+    const lastChunk = chunks[chunks.length - 1];
+    const newText = lastChunk.text + ' ' + trailingWords.join(' ');
+    chunks[chunks.length - 1] = {
+      text: newText,
+      wordCount: lastChunk.wordCount + trailingWords.length,
+      orpIndex: lastChunk.orpIndex, // stays on fixation word
+    };
   }
 
   return chunks;
@@ -189,12 +279,12 @@ function createBreakChunk(): Chunk {
 /**
  * Tokenize a single paragraph based on mode.
  */
-function tokenizeParagraph(text: string, mode: TokenMode, customCharWidth?: number): Chunk[] {
+function tokenizeParagraph(text: string, mode: TokenMode, saccadeLength?: number): Chunk[] {
   switch (mode) {
     case 'word':
       return tokenizeWordMode(text);
     case 'custom':
-      return tokenizeByCharWidth(text, customCharWidth ?? 8);
+      return tokenizeByFixation(text, saccadeLength ?? 10);
   }
 }
 
@@ -205,9 +295,9 @@ function tokenizeParagraph(text: string, mode: TokenMode, customCharWidth?: numb
  *
  * @param text - Text to tokenize
  * @param mode - Tokenization mode
- * @param customCharWidth - Custom character width (only used in 'custom' mode)
+ * @param saccadeLength - Fixation spacing in characters (only used in 'custom' mode, default 10)
  */
-export function tokenize(text: string, mode: TokenMode, customCharWidth?: number): Chunk[] {
+export function tokenize(text: string, mode: TokenMode, saccadeLength?: number): Chunk[] {
   // Strip markdown formatting for clean display
   const cleanText = stripMarkdown(text);
 
@@ -219,14 +309,14 @@ export function tokenize(text: string, mode: TokenMode, customCharWidth?: number
 
   // If no clear paragraph structure, treat as single block
   if (paragraphs.length <= 1) {
-    return tokenizeParagraph(cleanText, mode, customCharWidth);
+    return tokenizeParagraph(cleanText, mode, saccadeLength);
   }
 
   // Tokenize each paragraph and join with break markers
   const allChunks: Chunk[] = [];
 
   for (let i = 0; i < paragraphs.length; i++) {
-    const paragraphChunks = tokenizeParagraph(paragraphs[i], mode, customCharWidth);
+    const paragraphChunks = tokenizeParagraph(paragraphs[i], mode, saccadeLength);
     allChunks.push(...paragraphChunks);
 
     // Add break marker between paragraphs (not after last)

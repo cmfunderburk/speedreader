@@ -5,7 +5,6 @@ interface ReaderControlsProps {
   wpm: number;
   mode: TokenMode;
   displayMode: DisplayMode;
-  customCharWidth: number;
   showPacer: boolean;
   linesPerPage: number;
   currentPageIndex: number;
@@ -19,7 +18,6 @@ interface ReaderControlsProps {
   onWpmChange: (wpm: number) => void;
   onModeChange: (mode: TokenMode) => void;
   onDisplayModeChange: (displayMode: DisplayMode) => void;
-  onCustomCharWidthChange: (width: number) => void;
   onShowPacerChange: (show: boolean) => void;
   onLinesPerPageChange: (lines: number) => void;
   onNextPage: () => void;
@@ -44,7 +42,6 @@ export function ReaderControls({
   wpm,
   mode,
   displayMode,
-  customCharWidth,
   showPacer,
   linesPerPage,
   currentPageIndex,
@@ -58,7 +55,6 @@ export function ReaderControls({
   onWpmChange,
   onModeChange,
   onDisplayModeChange,
-  onCustomCharWidthChange,
   onShowPacerChange,
   onLinesPerPageChange,
   onNextPage,
@@ -189,16 +185,17 @@ export function ReaderControls({
             </label>
             {mode === 'custom' && (
               <label className="control-group">
-                <span className="control-label">Span:</span>
+                <span className="control-label">Saccade:</span>
                 <input
                   type="range"
-                  min="5"
-                  max="20"
-                  value={customCharWidth}
-                  onChange={e => onCustomCharWidthChange(Number(e.target.value))}
+                  min="7"
+                  max="15"
+                  step="1"
+                  value={saccadeLength}
+                  onChange={e => onSaccadeLengthChange(Number(e.target.value))}
                   className="control-slider"
                 />
-                <span className="control-value">{customCharWidth}ch</span>
+                <span className="control-value">{saccadeLength}ch</span>
               </label>
             )}
           </>

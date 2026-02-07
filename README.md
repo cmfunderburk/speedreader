@@ -8,8 +8,8 @@ A reading training application. Load articles, books, and feeds, then practice w
 
 Rapid Serial Visual Presentation. Words or short phrases are displayed one at a time at the center of the screen, with the optimal recognition point (ORP) highlighted. This trains fast intake by eliminating eye movement overhead.
 
-- **Chunking**: single word or custom width (5-20 chars), respecting punctuation as natural break points
-- Character-based timing (5 chars = 1 word) with punctuation pauses and word-length multipliers
+- **Chunking**: single word or fixation-aligned custom spans using the saccade scoring model (shared saccade length slider, 7-15 chars). Custom chunks simulate what you'd see during a real fixation — boundaries land on content words, with short/function words absorbed into the nearest fixation
+- **Timing**: word mode uses per-word cadence with lexical multipliers; custom mode uses character-proportional timing (4.8 chars = 1 word) with per-occurrence punctuation pauses
 - Configurable WPM (100-800) with optional WPM ramp
 - **ORP highlight**: amber highlight on the optimal recognition point (toggle on/off)
 - **Alternate colors**: optional color-phase switching between consecutive chunks
@@ -127,7 +127,7 @@ Reader controls at the bottom of the main view provide:
 - **Chunking mode** selector (Word / Custom) for RSVP
 - **ORP** and **alternate colors** toggles for RSVP
 - **Pacer**, **OVP**, and **sweep** toggles for saccade mode
-- **Saccade length** slider (7-15 chars) for fixation spacing
+- **Saccade length** slider (7-15 chars) — shared between RSVP custom mode and saccade mode, controls fixation spacing
 - **Lines per page** for saccade and recall modes
 
 ## Running

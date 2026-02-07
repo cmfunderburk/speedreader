@@ -1,5 +1,5 @@
 import type { Chunk, SaccadePage, SaccadeLine } from '../types';
-import { normalizeText, calculateORP } from './tokenizer';
+import { normalizeText, calculateORP, wordPenalty } from './tokenizer';
 
 export const SACCADE_LINE_WIDTH = 80;
 export const SACCADE_LINES_PER_PAGE = 15;
@@ -11,34 +11,6 @@ export const SACCADE_LINES_PER_PAGE = 15;
 export function calculateSaccadeLineDuration(textLength: number, wpm: number): number {
   if (textLength <= 0 || wpm <= 0) return 0;
   return (textLength / 5) * (60000 / wpm);
-}
-
-// --- Fixation scoring model ---
-// See docs/saccade/01-scoring-function-v1.md for design rationale.
-
-const FUNCTION_WORDS: ReadonlySet<string> = new Set([
-  'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'is', 'it', 'or', 'as',
-  'by', 'if', 'so', 'no', 'do', 'be', 'am', 'are', 'was', 'were', 'he',
-  'she', 'we', 'they', 'you', 'my', 'your', 'our', 'us', 'up', 'and',
-  'for', 'but', 'nor', 'yet', 'with', 'from', 'into', 'onto', 'this',
-  'that', 'these', 'those', 'its',
-]);
-
-const FUNCTION_WORD_PENALTY = 1.25;
-
-function lengthPenalty(len: number): number {
-  if (len <= 1) return 5.0;
-  if (len === 2) return 4.0;
-  if (len === 3) return 2.5;
-  if (len === 4) return 1.5;
-  if (len === 5) return 0.5;
-  return 0.0;
-}
-
-function wordPenalty(word: string): number {
-  const fp = FUNCTION_WORDS.has(word.toLowerCase().replace(/[^a-z]/g, ''))
-    ? FUNCTION_WORD_PENALTY : 0;
-  return lengthPenalty(word.length) + fp;
 }
 
 /**

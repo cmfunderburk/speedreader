@@ -1,4 +1,4 @@
-import type { Chunk } from '../types';
+import type { Chunk, TokenMode } from '../types';
 
 /**
  * Check if a chunk is a paragraph break marker.
@@ -33,21 +33,21 @@ const PHRASE_ADDITIONAL_WORD_WEIGHT = 0.6;
 /**
  * Calculate display time for a chunk in milliseconds.
  *
- * Uses a base milliseconds-per-word cadence derived from WPM, then applies
- * multipliers for phrase length, average word length, and punctuation pauses.
- * Longer words get extra time while very short function words get slightly
- * less, and additional words in a chunk cost a fraction of a full word to
- * keep phrase modes feeling cohesive.
+ * **Word mode** (default): word-cadence based. Uses msPerWord as baseline,
+ * with multipliers for phrase length, lexical complexity, and end-of-chunk
+ * punctuation pauses. Research-backed for single-word RSVP.
  *
- * Punctuation pauses: +50% after sentence endings (.!?), +25% after
- * clause boundaries (,;:—–).
+ * **Custom mode**: character-proportional. Base time scales linearly with
+ * lexical character count (letters/digits only), so WPM means the same
+ * actual throughput regardless of span width. Punctuation pauses are
+ * additive per-occurrence anywhere in the chunk, not just at the end.
  *
  * Minimum display time of 80ms prevents ultra-short chunks from flashing
  * invisibly.
  *
- * Break chunks (paragraph markers) get a fixed 2-word pause.
+ * Break chunks (paragraph markers) get a fixed 2-word pause in both modes.
  */
-export function calculateDisplayTime(chunk: Chunk, wpm: number): number {
+export function calculateDisplayTime(chunk: Chunk, wpm: number, mode: TokenMode = 'word'): number {
   const msPerWord = 60000 / wpm;
 
   // Break chunks (paragraph markers) get a fixed pause of ~2 words
@@ -55,6 +55,18 @@ export function calculateDisplayTime(chunk: Chunk, wpm: number): number {
     return msPerWord * 2;
   }
 
+  if (mode === 'custom') {
+    return calculateDisplayTimeCharBased(chunk, wpm, msPerWord);
+  }
+
+  return calculateDisplayTimeWordBased(chunk, wpm, msPerWord);
+}
+
+/**
+ * Word-based timing: one-word baseline with phrase discount and lexical multipliers.
+ * Used for single-word RSVP where per-word cadence is the standard model.
+ */
+function calculateDisplayTimeWordBased(chunk: Chunk, _wpm: number, msPerWord: number): number {
   const wordCount = chunk.wordCount;
 
   // Base phrase multiplier: each additional word costs a fraction of a single word
@@ -87,16 +99,40 @@ export function calculateDisplayTime(chunk: Chunk, wpm: number): number {
 }
 
 /**
+ * Character-proportional timing: base time scales with lexical character count
+ * so that WPM represents actual throughput regardless of span width. Punctuation
+ * pauses are additive per-occurrence anywhere in the chunk.
+ */
+function calculateDisplayTimeCharBased(chunk: Chunk, _wpm: number, msPerWord: number): number {
+  // Count only letters and digits — punctuation/spaces handled separately
+  const lexicalChars = chunk.text.replace(/[^a-zA-Z0-9]/g, '').length;
+  const wordEquivalent = lexicalChars / AVG_WORD_LENGTH;
+
+  let displayTime = wordEquivalent * msPerWord;
+
+  // Count all pause-inducing punctuation anywhere in the chunk
+  const majorCount = (chunk.text.match(/[.!?]/g) || []).length;
+  const minorCount = (chunk.text.match(/[,;:\u2014\u2013]/g) || []).length;
+
+  // Each occurrence adds a fraction of one word's time
+  displayTime += majorCount * msPerWord * (MAJOR_PUNCT_MULTIPLIER - 1);
+  displayTime += minorCount * msPerWord * (MINOR_PUNCT_MULTIPLIER - 1);
+
+  return Math.max(MIN_DISPLAY_MS, displayTime);
+}
+
+/**
  * Calculate remaining time from current position to end.
  */
 export function calculateRemainingTime(
   chunks: Chunk[],
   currentIndex: number,
-  wpm: number
+  wpm: number,
+  mode: TokenMode = 'word'
 ): number {
   let totalMs = 0;
   for (let i = currentIndex; i < chunks.length; i++) {
-    totalMs += calculateDisplayTime(chunks[i], wpm);
+    totalMs += calculateDisplayTime(chunks[i], wpm, mode);
   }
   return totalMs;
 }

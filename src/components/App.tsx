@@ -237,7 +237,7 @@ export function App() {
   }, [rsvp]);
 
   const remainingTime = rsvp.chunks.length > 0
-    ? formatTime(calculateRemainingTime(rsvp.chunks, rsvp.currentChunkIndex, rsvp.effectiveWpm))
+    ? formatTime(calculateRemainingTime(rsvp.chunks, rsvp.currentChunkIndex, rsvp.effectiveWpm, rsvp.mode))
     : '--:--';
 
   const totalWords = useMemo(
@@ -353,7 +353,6 @@ export function App() {
               wpm={rsvp.wpm}
               mode={rsvp.mode}
               displayMode={rsvp.displayMode}
-              customCharWidth={rsvp.customCharWidth}
               showPacer={rsvp.showPacer}
               linesPerPage={rsvp.linesPerPage}
               currentPageIndex={rsvp.currentSaccadePageIndex}
@@ -367,7 +366,6 @@ export function App() {
               onWpmChange={rsvp.setWpm}
               onModeChange={rsvp.setMode}
               onDisplayModeChange={rsvp.setDisplayMode}
-              onCustomCharWidthChange={rsvp.setCustomCharWidth}
               onShowPacerChange={rsvp.setShowPacer}
               onLinesPerPageChange={rsvp.setLinesPerPage}
               onNextPage={rsvp.nextPage}
