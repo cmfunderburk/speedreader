@@ -28,19 +28,19 @@ Full-page reading with a continuous sweep pacer. Text is laid out in fixed-width
 
 ### Prediction
 
-Next-word prediction training. You see the text accumulated so far and type what you think comes next. Correct guesses advance instantly (flow state); misses pause and show the actual word with a loss score.
+Next-word prediction training. You see the text accumulated so far and type what you think comes next. Known words advance instantly (flow state); misses pause and show the actual word with a loss meter.
 
 - First-letter hint for the current word
-- Levenshtein-based scoring (0 = exact match, 1 = completely wrong)
+- Binary scoring with typo tolerance — words within Damerau-Levenshtein distance ≤1 (≤2 for 8+ char words) count as known
 - Tab to preview ahead at your selected WPM, then resume predicting
-- Session stats: words attempted, exact match %, average loss
+- Session stats: words attempted, known %, exact %
 
 ### Recall
 
 First-letter scaffold reconstruction. Each word shows only its first letter with the rest replaced by a dotted underline showing character positions. You type to reconstruct each word from memory and context.
 
-- Words validate as you type and advance automatically
-- Correct words appear in green, misses in red
+- Words validate as you type and advance automatically (typo-tolerant)
+- Known words appear in green, misses in red
 - Uses saccade page layout for stable line positioning
 - Session stats tracked the same as prediction mode
 
@@ -50,8 +50,8 @@ A structured read-recall-adjust loop that combines saccade reading with recall t
 
 1. **Setup** — A paragraph table of contents shows previews, word counts, and any previous scores. Select a starting paragraph and initial WPM.
 2. **Read** — The paragraph is displayed in saccade layout with a sweep pacer at your current WPM. A brief lead-in shows static ORP markers before the sweep begins.
-3. **Recall** — The same paragraph reappears as first-letter scaffolds. Type each word from memory; words auto-advance on correct input, with miss feedback and Levenshtein scoring.
-4. **Feedback** — Shows your score (0-100%) and exact match count. WPM adjusts automatically:
+3. **Recall** — The same paragraph reappears as first-letter scaffolds. Type each word from memory; words auto-advance when known (typo-tolerant via Damerau-Levenshtein), with miss feedback for unknown words.
+4. **Feedback** — Shows your retention score (known words / total words). WPM adjusts automatically:
    - Below 90%: WPM decreases by 25, paragraph repeats
    - 90-94%: no change, advance to next paragraph
    - 95%+: WPM increases by 15, advance to next paragraph

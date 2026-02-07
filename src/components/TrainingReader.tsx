@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react';
 import type { Article, Chunk, TrainingParagraphResult } from '../types';
-import { segmentIntoParagraphs, tokenizeParagraphSaccade, tokenizeParagraphRecall, calculateSaccadeLineDuration, countWords } from '../lib/saccade';
-import { normalizedLoss, isExactMatch } from '../lib/levenshtein';
+import { segmentIntoParagraphs, segmentIntoSentences, tokenizeParagraphSaccade, tokenizeParagraphRecall, calculateSaccadeLineDuration, countWords } from '../lib/saccade';
+import { isExactMatch, isWordKnown } from '../lib/levenshtein';
 import { loadTrainingHistory, saveTrainingHistory } from '../lib/storage';
 import type { TrainingHistory } from '../lib/storage';
 import { SaccadeLineComponent } from './SaccadeReader';
@@ -31,7 +31,7 @@ interface CompletedWord {
 interface ParagraphStats {
   totalWords: number;
   exactMatches: number;
-  totalLoss: number;
+  knownWords: number;
 }
 
 export function TrainingReader({
@@ -67,6 +67,16 @@ export function TrainingReader({
   const [wpm, setWpm] = useState(initialWpm);
   const [paused, setPaused] = useState(false);
 
+  // Sentence mode: cycle read→recall per sentence within a paragraph
+  const [sentenceMode, setSentenceModeState] = useState(() => {
+    try { return localStorage.getItem('speedread_training_sentence') === 'true'; } catch { return false; }
+  });
+  const setSentenceMode = useCallback((on: boolean) => {
+    setSentenceModeState(on);
+    try { localStorage.setItem('speedread_training_sentence', String(on)); } catch {}
+  }, []);
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+
   // Reading phase state
   const [currentLineIndex, setCurrentLineIndex] = useState(-1);
   const [readingLeadIn, setReadingLeadIn] = useState(false);
@@ -76,9 +86,9 @@ export function TrainingReader({
   const [recallInput, setRecallInput] = useState('');
   const [recallWordIndex, setRecallWordIndex] = useState(0);
   const [showingMiss, setShowingMiss] = useState(false);
-  const [lastMissResult, setLastMissResult] = useState<{ predicted: string; actual: string; loss: number } | null>(null);
+  const [lastMissResult, setLastMissResult] = useState<{ predicted: string; actual: string } | null>(null);
   const [completedWords, setCompletedWords] = useState<Map<WordKey, CompletedWord>>(new Map());
-  const [paragraphStats, setParagraphStats] = useState<ParagraphStats>({ totalWords: 0, exactMatches: 0, totalLoss: 0 });
+  const [paragraphStats, setParagraphStats] = useState<ParagraphStats>({ totalWords: 0, exactMatches: 0, knownWords: 0 });
 
   // Session history
   const [sessionHistory, setSessionHistory] = useState<TrainingParagraphResult[]>([]);
@@ -88,16 +98,23 @@ export function TrainingReader({
 
   const currentParagraph = paragraphs[currentParagraphIndex] ?? '';
 
+  // Sentence chunks: in sentence mode, split paragraph; otherwise just [paragraph]
+  const sentenceChunks = useMemo(
+    () => sentenceMode ? segmentIntoSentences(currentParagraph) : [currentParagraph],
+    [currentParagraph, sentenceMode]
+  );
+  const currentText = sentenceChunks[currentSentenceIndex] ?? currentParagraph;
+
   // Saccade data for reading phase
   const saccadeData = useMemo(
-    () => tokenizeParagraphSaccade(currentParagraph),
-    [currentParagraph]
+    () => tokenizeParagraphSaccade(currentText),
+    [currentText]
   );
 
   // Recall data for recall phase
   const recallData = useMemo(
-    () => tokenizeParagraphRecall(currentParagraph),
-    [currentParagraph]
+    () => tokenizeParagraphRecall(currentText),
+    [currentText]
   );
 
   const currentRecallChunk = recallData.chunks[recallWordIndex] ?? null;
@@ -175,20 +192,35 @@ export function TrainingReader({
   }, [phase, recallWordIndex]);
 
   // --- Recall handlers ---
-  const finishRecallPhase = useCallback((stats: ParagraphStats, finalWord: { loss: number; exact: boolean } | null) => {
+  const finishRecallPhase = useCallback((stats: ParagraphStats, finalWord: { known: boolean; exact: boolean } | null) => {
     // Compute final stats including the last word
     let totalWords = stats.totalWords;
     let exactMatches = stats.exactMatches;
-    let totalLoss = stats.totalLoss;
+    let knownWords = stats.knownWords;
 
     if (finalWord) {
       totalWords += 1;
       exactMatches += finalWord.exact ? 1 : 0;
-      totalLoss += finalWord.loss;
+      knownWords += finalWord.known ? 1 : 0;
     }
 
-    const avgLoss = totalWords > 0 ? totalLoss / totalWords : 0;
-    const score = Math.round((1 - avgLoss) * 100);
+    // Sentence mode: if more sentences remain, advance and loop back to reading
+    if (sentenceMode && currentSentenceIndex < sentenceChunks.length - 1) {
+      setParagraphStats({ totalWords, exactMatches, knownWords });
+      setCurrentSentenceIndex(prev => prev + 1);
+      setRecallInput('');
+      setRecallWordIndex(0);
+      setCompletedWords(new Map());
+      setShowingMiss(false);
+      setLastMissResult(null);
+      setCurrentLineIndex(-1);
+      readingStepRef.current = 0;
+      setReadingLeadIn(true);
+      setPhase('reading');
+      return;
+    }
+
+    const score = totalWords > 0 ? Math.round((knownWords / totalWords) * 100) : 0;
 
     const result: TrainingParagraphResult = {
       paragraphIndex: currentParagraphIndex,
@@ -219,13 +251,13 @@ export function TrainingReader({
     onWpmChange(newWpm);
 
     setPhase('feedback');
-  }, [currentParagraphIndex, wpm, sessionHistory, onWpmChange, article.id]);
+  }, [currentParagraphIndex, wpm, sessionHistory, onWpmChange, article.id, sentenceMode, currentSentenceIndex, sentenceChunks.length]);
 
   const handleRecallSubmit = useCallback(() => {
     if (!currentRecallChunk || recallInput.trim() === '') return;
 
     const actual = currentRecallChunk.text;
-    const loss = normalizedLoss(recallInput, actual);
+    const known = isWordKnown(recallInput, actual);
     const exact = isExactMatch(recallInput, actual);
 
     const key = makeWordKey(
@@ -233,47 +265,46 @@ export function TrainingReader({
       currentRecallChunk.saccade!.startChar
     );
 
-    if (exact) {
+    if (known) {
       setCompletedWords(prev => new Map(prev).set(key, { text: actual, correct: true }));
       setRecallInput('');
 
       const nextIdx = recallWordIndex + 1;
       if (nextIdx >= recallData.chunks.length) {
-        finishRecallPhase(paragraphStats, { loss, exact: true });
+        finishRecallPhase(paragraphStats, { known: true, exact });
       } else {
         setParagraphStats(prev => ({
           totalWords: prev.totalWords + 1,
-          exactMatches: prev.exactMatches + 1,
-          totalLoss: prev.totalLoss + loss,
+          exactMatches: prev.exactMatches + (exact ? 1 : 0),
+          knownWords: prev.knownWords + 1,
         }));
         setRecallWordIndex(nextIdx);
       }
     } else {
       setCompletedWords(prev => new Map(prev).set(key, { text: actual, correct: false }));
-      setLastMissResult({ predicted: recallInput.trim(), actual, loss });
+      setLastMissResult({ predicted: recallInput.trim(), actual });
       setShowingMiss(true);
     }
   }, [recallInput, currentRecallChunk, recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase]);
 
   const handleMissContinue = useCallback(() => {
-    const loss = lastMissResult?.loss ?? 1;
     setShowingMiss(false);
     setLastMissResult(null);
     setRecallInput('');
 
     const nextIdx = recallWordIndex + 1;
     if (nextIdx >= recallData.chunks.length) {
-      finishRecallPhase(paragraphStats, { loss, exact: false });
+      finishRecallPhase(paragraphStats, { known: false, exact: false });
     } else {
       setParagraphStats(prev => ({
         totalWords: prev.totalWords + 1,
         exactMatches: prev.exactMatches,
-        totalLoss: prev.totalLoss + loss,
+        knownWords: prev.knownWords,
       }));
       setRecallWordIndex(nextIdx);
     }
     setTimeout(() => inputRef.current?.focus(), 0);
-  }, [lastMissResult, recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase]);
+  }, [recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === ' ' || e.key === 'Enter') {
@@ -308,10 +339,11 @@ export function TrainingReader({
     setShowingMiss(false);
     setLastMissResult(null);
     setCompletedWords(new Map());
-    setParagraphStats({ totalWords: 0, exactMatches: 0, totalLoss: 0 });
+    setParagraphStats({ totalWords: 0, exactMatches: 0, knownWords: 0 });
     setCurrentLineIndex(-1);
     readingStepRef.current = 0;
     setReadingLeadIn(true);
+    setCurrentSentenceIndex(0);
 
     if (shouldRepeat) {
       // Repeat same paragraph
@@ -330,6 +362,7 @@ export function TrainingReader({
   const handleStart = useCallback(() => {
     readingStepRef.current = 0;
     setReadingLeadIn(true);
+    setCurrentSentenceIndex(0);
     setPhase('reading');
   }, []);
 
@@ -341,9 +374,10 @@ export function TrainingReader({
     setRecallInput('');
     setRecallWordIndex(0);
     setCompletedWords(new Map());
-    setParagraphStats({ totalWords: 0, exactMatches: 0, totalLoss: 0 });
+    setParagraphStats({ totalWords: 0, exactMatches: 0, knownWords: 0 });
     setCurrentLineIndex(-1);
     readingStepRef.current = 0;
+    setCurrentSentenceIndex(0);
     setPhase('setup');
   }, []);
 
@@ -409,6 +443,14 @@ export function TrainingReader({
               className="control-slider wpm-slider"
             />
             <span className="control-value">{wpm} WPM</span>
+          </label>
+          <label className="training-setup-sentence">
+            <input
+              type="checkbox"
+              checked={sentenceMode}
+              onChange={e => setSentenceMode(e.target.checked)}
+            />
+            <span className="control-label">Sentence mode</span>
           </label>
           <div className="training-setup-info">
             {paragraphs.length} paragraph{paragraphs.length !== 1 ? 's' : ''}
@@ -543,6 +585,7 @@ export function TrainingReader({
           <span className="training-phase-label">{paused ? 'Paused' : 'Read'}</span>
           <span className="training-progress">
             Paragraph {currentParagraphIndex + 1} / {paragraphs.length}
+            {sentenceMode && sentenceChunks.length > 1 && ` · Sentence ${currentSentenceIndex + 1} / ${sentenceChunks.length}`}
           </span>
           <span className="training-wpm">{wpm} WPM</span>
           <button onClick={togglePause} className="control-btn training-pause-btn">
@@ -581,7 +624,10 @@ export function TrainingReader({
       <div className="training-header">
         <span className="training-phase-label">{paused ? 'Paused' : 'Recall'}</span>
         <span className="training-progress">
-          {recallWordIndex} / {totalRecallWords} words
+          {sentenceMode && sentenceChunks.length > 1
+            ? `Sentence ${currentSentenceIndex + 1} / ${sentenceChunks.length} · ${recallWordIndex} / ${totalRecallWords} words`
+            : `${recallWordIndex} / ${totalRecallWords} words`
+          }
         </span>
         <span className="training-wpm">{wpm} WPM</span>
         <button onClick={togglePause} className="control-btn training-pause-btn">

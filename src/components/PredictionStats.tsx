@@ -9,7 +9,7 @@ interface PredictionStatsProps {
  * Stats bar showing prediction progress and accuracy.
  */
 export function PredictionStats({ stats }: PredictionStatsProps) {
-  const { exactPercent, avgScore } = predictionScorePercents(stats);
+  const { exactPercent, knownPercent } = predictionScorePercents(stats);
 
   return (
     <div className="prediction-stats-bar">
@@ -18,12 +18,12 @@ export function PredictionStats({ stats }: PredictionStatsProps) {
         <span className="prediction-stat-label">words</span>
       </div>
       <div className="prediction-stat">
-        <span className="prediction-stat-value">{exactPercent}%</span>
-        <span className="prediction-stat-label">exact</span>
+        <span className="prediction-stat-value">{knownPercent}%</span>
+        <span className="prediction-stat-label">known</span>
       </div>
       <div className="prediction-stat">
-        <span className="prediction-stat-value">{avgScore}%</span>
-        <span className="prediction-stat-label">avg score</span>
+        <span className="prediction-stat-value">{exactPercent}%</span>
+        <span className="prediction-stat-label">exact</span>
       </div>
     </div>
   );

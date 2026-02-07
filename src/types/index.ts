@@ -66,7 +66,7 @@ export interface PredictionResult {
 export interface PredictionStats {
   totalWords: number;
   exactMatches: number;
-  averageLoss: number;
+  knownWords: number;
 }
 
 export interface TrainingParagraphResult {

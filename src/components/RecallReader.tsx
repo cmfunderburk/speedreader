@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, KeyboardEvent } from 'react';
 import type { Chunk, SaccadePage, PredictionResult, PredictionStats } from '../types';
-import { normalizedLoss, isExactMatch } from '../lib/levenshtein';
+import { normalizedLoss, isWordKnown } from '../lib/levenshtein';
 import { LossMeter } from './LossMeter';
 import { PredictionComplete } from './PredictionComplete';
 
@@ -77,7 +77,7 @@ export function RecallReader({
 
     const actual = currentChunk.text;
     const loss = normalizedLoss(input, actual);
-    const correct = isExactMatch(input, actual);
+    const known = isWordKnown(input, actual);
 
     const result: PredictionResult = {
       predicted: input.trim(),
@@ -95,7 +95,7 @@ export function RecallReader({
       currentChunk.saccade!.startChar
     );
 
-    if (correct) {
+    if (known) {
       setCompletedWords(prev => new Map(prev).set(key, { text: actual, correct: true }));
       setInput('');
       onAdvance();

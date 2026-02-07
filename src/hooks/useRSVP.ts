@@ -4,7 +4,7 @@ import { tokenize } from '../lib/tokenizer';
 import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE, calculateSaccadeLineDuration } from '../lib/saccade';
 import { calculateDisplayTime, getEffectiveWpm } from '../lib/rsvp';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
-import { isExactMatch } from '../lib/levenshtein';
+import { isExactMatch, isWordKnown } from '../lib/levenshtein';
 import { usePlaybackTimer } from './usePlaybackTimer';
 
 interface UseRSVPOptions {
@@ -89,7 +89,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const [predictionStats, setPredictionStats] = useState<PredictionStats>({
     totalWords: 0,
     exactMatches: 0,
-    averageLoss: 0,
+    knownWords: 0,
   });
 
   const [rampEnabled, setRampEnabledState] = useState(initialRampEnabled);
@@ -361,7 +361,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         setPredictionStats({
           totalWords: 0,
           exactMatches: 0,
-          averageLoss: 0,
+          knownWords: 0,
         });
       } else if (newDisplayMode === 'recall') {
         // Entering recall: start from beginning, reset stats
@@ -369,7 +369,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         setPredictionStats({
           totalWords: 0,
           exactMatches: 0,
-          averageLoss: 0,
+          knownWords: 0,
         });
       } else {
         // Entering RSVP/Saccade: use ratio-based mapping
@@ -461,14 +461,13 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const handlePredictionResult = useCallback((result: PredictionResult) => {
     setPredictionStats(prev => {
       const totalWords = prev.totalWords + 1;
-      const correct = isExactMatch(result.predicted, result.actual);
-      const exactMatches = prev.exactMatches + (correct ? 1 : 0);
-      const totalLoss = prev.averageLoss * prev.totalWords + result.loss;
+      const exact = isExactMatch(result.predicted, result.actual);
+      const known = isWordKnown(result.predicted, result.actual);
 
       return {
         totalWords,
-        exactMatches,
-        averageLoss: totalWords > 0 ? totalLoss / totalWords : 0,
+        exactMatches: prev.exactMatches + (exact ? 1 : 0),
+        knownWords: prev.knownWords + (known ? 1 : 0),
       };
     });
   }, []);
@@ -477,7 +476,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     setPredictionStats({
       totalWords: 0,
       exactMatches: 0,
-      averageLoss: 0,
+      knownWords: 0,
     });
     setCurrentChunkIndex(0);
   }, []);

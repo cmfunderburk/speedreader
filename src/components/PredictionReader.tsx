@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react';
 import type { Chunk, PredictionResult, PredictionStats } from '../types';
-import { normalizedLoss, isExactMatch } from '../lib/levenshtein';
+import { normalizedLoss, isWordKnown } from '../lib/levenshtein';
 import { calculateORP } from '../lib/tokenizer';
 import { LossMeter } from './LossMeter';
 import { PredictionComplete } from './PredictionComplete';
@@ -102,7 +102,7 @@ export function PredictionReader({
 
     const actual = currentChunk.text;
     const loss = normalizedLoss(input, actual);
-    const correct = isExactMatch(input, actual);
+    const known = isWordKnown(input, actual);
 
     const result: PredictionResult = {
       predicted: input.trim(),
@@ -114,7 +114,7 @@ export function PredictionReader({
 
     onPredictionResult(result);
 
-    if (correct) {
+    if (known) {
       // Correct - advance immediately (flow state)
       setInput('');
       onAdvance();

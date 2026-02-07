@@ -1845,6 +1845,14 @@ button {
   margin: 0.5rem 0;
 }
 
+.training-setup-sentence {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 .training-pause-btn {
   margin-left: auto;
   padding: 0.3rem 0.75rem;

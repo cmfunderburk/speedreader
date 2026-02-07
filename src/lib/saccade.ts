@@ -326,7 +326,7 @@ export function tokenizeRecall(
       }
 
       const lineChunks: Chunk[] = [];
-      const wordRegex = /\S+/g;
+      const wordRegex = /[^\s-]+/g;
       let match;
 
       while ((match = wordRegex.exec(line.text)) !== null) {
@@ -431,6 +431,52 @@ export function segmentIntoParagraphs(
 }
 
 /**
+ * Split a paragraph into sentence chunks for sentence-mode training.
+ * Splits at sentence endings (.!?) and bundles short sentences (≤minWords)
+ * with their neighbors to prevent trivially short recall sequences.
+ * Returns [text] unchanged if no sentence boundaries are found.
+ */
+export function segmentIntoSentences(
+  text: string,
+  minWords: number = 5
+): string[] {
+  const raw = text.match(/[^.!?]+[.!?]+\s*/g);
+  if (!raw) return [text];
+
+  // Capture any trailing text without terminal punctuation
+  const matchedLen = raw.reduce((sum, m) => sum + m.length, 0);
+  if (matchedLen < text.length) {
+    const remainder = text.slice(matchedLen).trim();
+    if (remainder.length > 0) raw.push(remainder);
+  }
+
+  if (raw.length <= 1) return [text.trim()];
+
+  // Bundle short sentences with the previous chunk
+  const chunks: string[] = [];
+  let buffer = '';
+
+  for (const sentence of raw) {
+    buffer += (buffer ? ' ' : '') + sentence.trim();
+    if (countWords(buffer) > minWords) {
+      chunks.push(buffer);
+      buffer = '';
+    }
+  }
+
+  // Flush remaining buffer — append to last chunk
+  if (buffer.length > 0) {
+    if (chunks.length > 0) {
+      chunks[chunks.length - 1] += ' ' + buffer;
+    } else {
+      chunks.push(buffer);
+    }
+  }
+
+  return chunks;
+}
+
+/**
  * Tokenize a single paragraph for saccade-style reading display.
  * Returns a single page and one chunk per non-blank line.
  */
@@ -489,7 +535,7 @@ export function tokenizeParagraphRecall(
     }
 
     const lineChunks: Chunk[] = [];
-    const wordRegex = /\S+/g;
+    const wordRegex = /[^\s-]+/g;
     let match;
 
     while ((match = wordRegex.exec(line.text)) !== null) {

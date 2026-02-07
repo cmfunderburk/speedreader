@@ -11,7 +11,7 @@ interface PredictionCompleteProps {
  * Completion summary shown at end of article in prediction mode.
  */
 export function PredictionComplete({ stats, onReadAgain, onClose }: PredictionCompleteProps) {
-  const { exactPercent, avgScore } = predictionScorePercents(stats);
+  const { exactPercent, knownPercent } = predictionScorePercents(stats);
 
   return (
     <div className="prediction-complete">
@@ -23,12 +23,12 @@ export function PredictionComplete({ stats, onReadAgain, onClose }: PredictionCo
           <span className="prediction-stat-label">words predicted</span>
         </div>
         <div className="prediction-stat">
-          <span className="prediction-stat-value">{exactPercent}%</span>
-          <span className="prediction-stat-label">exact matches</span>
+          <span className="prediction-stat-value">{knownPercent}%</span>
+          <span className="prediction-stat-label">known</span>
         </div>
         <div className="prediction-stat">
-          <span className="prediction-stat-value">{avgScore}%</span>
-          <span className="prediction-stat-label">average score</span>
+          <span className="prediction-stat-value">{exactPercent}%</span>
+          <span className="prediction-stat-label">exact</span>
         </div>
       </div>
 
