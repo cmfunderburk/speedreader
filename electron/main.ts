@@ -31,6 +31,44 @@ interface TierData {
 }
 
 const corpusCache = new Map<CorpusTier, TierData>()
+const SUPPORTED_BOOK_EXTENSIONS = new Set(['.pdf', '.epub', '.txt'])
+
+function normalizePath(inputPath: string): string | null {
+  try {
+    return fs.realpathSync(path.resolve(inputPath))
+  } catch {
+    return null
+  }
+}
+
+function isWithinRoot(targetPath: string, rootPath: string): boolean {
+  const relative = path.relative(rootPath, targetPath)
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
+function getAllowedLibraryRoots(): string[] {
+  return getConfiguredSources()
+    .map(source => normalizePath(source.path))
+    .filter((sourcePath): sourcePath is string => sourcePath !== null)
+}
+
+function resolveAllowedLibraryPath(requestedPath: string): string {
+  const normalized = normalizePath(requestedPath)
+  if (!normalized) {
+    throw new Error('Path does not exist')
+  }
+
+  const roots = getAllowedLibraryRoots()
+  if (roots.length === 0) {
+    throw new Error('No library sources configured')
+  }
+
+  if (!roots.some(root => isWithinRoot(normalized, root))) {
+    throw new Error('Path is outside configured library sources')
+  }
+
+  return normalized
+}
 
 function getResourcePath(...segments: string[]): string {
   const base = app.isPackaged
@@ -85,7 +123,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
 
@@ -144,25 +182,30 @@ ipcMain.handle('library:getSources', () => {
 })
 
 ipcMain.handle('library:listBooks', async (_, dirPath: string) => {
-  return scanDirectory(dirPath)
+  const allowedPath = resolveAllowedLibraryPath(dirPath)
+  return scanDirectory(allowedPath)
 })
 
 ipcMain.handle('library:openBook', async (_, filePath: string) => {
   try {
-    const ext = path.extname(filePath).toLowerCase()
-    console.log(`Opening book: ${filePath} (${ext})`)
+    const allowedPath = resolveAllowedLibraryPath(filePath)
+    const ext = path.extname(allowedPath).toLowerCase()
+    if (!SUPPORTED_BOOK_EXTENSIONS.has(ext)) {
+      throw new Error(`Unsupported file type: ${ext}`)
+    }
+    console.log(`Opening book: ${allowedPath} (${ext})`)
     if (ext === '.pdf') {
-      const result = await extractPdfText(filePath)
+      const result = await extractPdfText(allowedPath)
       console.log(`PDF extracted: ${result.title}, ${result.content.length} chars`)
       return result
     } else if (ext === '.epub') {
-      const result = await extractEpubText(filePath)
+      const result = await extractEpubText(allowedPath)
       console.log(`EPUB extracted: ${result.title}, ${result.content.length} chars`)
       return result
     } else if (ext === '.txt') {
       // Pre-processed text files - read directly
-      const content = fs.readFileSync(filePath, 'utf-8')
-      const title = path.basename(filePath, '.txt').replace(/-/g, ' ')
+      const content = fs.readFileSync(allowedPath, 'utf-8')
+      const title = path.basename(allowedPath, '.txt').replace(/-/g, ' ')
       console.log(`TXT loaded: ${title}, ${content.length} chars`)
       return { title, content }
     }
@@ -174,11 +217,19 @@ ipcMain.handle('library:openBook', async (_, filePath: string) => {
 })
 
 ipcMain.handle('library:addSource', async (_, source: LibrarySource) => {
-  addSource(source)
+  const normalized = normalizePath(source.path)
+  if (!normalized) {
+    throw new Error('Directory does not exist')
+  }
+  if (!fs.statSync(normalized).isDirectory()) {
+    throw new Error('Library source must be a directory')
+  }
+  addSource({ ...source, path: normalized })
 })
 
 ipcMain.handle('library:removeSource', async (_, sourcePath: string) => {
-  removeSource(sourcePath)
+  const normalized = path.resolve(sourcePath)
+  removeSource(normalized)
 })
 
 ipcMain.handle('library:selectDirectory', async () => {
@@ -211,6 +262,7 @@ ipcMain.handle('corpus:getInfo', () => {
 })
 
 ipcMain.handle('corpus:sampleArticle', (_, tier: CorpusTier) => {
+  if (!CORPUS_TIERS.includes(tier)) return null
   if (!ensureCorpusLoaded(tier)) return null
   const data = corpusCache.get(tier)
   if (!data || data.articles.length === 0) return null

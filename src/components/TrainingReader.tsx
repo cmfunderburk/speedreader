@@ -98,7 +98,7 @@ export function TrainingReader({
 }: TrainingReaderProps) {
   const paragraphs = useMemo(
     () => article ? segmentIntoParagraphs(article.content) : [],
-    [article?.content]
+    [article]
   );
 
   const [trainingHistory, setTrainingHistory] = useState<TrainingHistory>(
@@ -129,7 +129,9 @@ export function TrainingReader({
   });
   const setSentenceMode = useCallback((on: boolean) => {
     setSentenceModeState(on);
-    try { localStorage.setItem('speedread_training_sentence', String(on)); } catch {}
+    try { localStorage.setItem('speedread_training_sentence', String(on)); } catch {
+      // Ignore storage failures (private mode, quota).
+    }
   }, []);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
 
@@ -189,8 +191,9 @@ export function TrainingReader({
   // Drill: split article into sentences, extract current round's text
   const drillSentences = useMemo(
     () => drillArticle ? segmentIntoSentences(drillArticle.text) : [],
-    [drillArticle?.text]
+    [drillArticle]
   );
+  const articleId = article?.id;
 
   // Accumulate sentences up to charLimit (always at least one)
   const { drillRoundText, drillRoundSentenceCount } = useMemo(() => {
@@ -359,7 +362,7 @@ export function TrainingReader({
 
       setTrainingHistory(prev => {
         const updated = { ...prev, [currentParagraphIndex]: { score: scoreNorm, wpm, timestamp: Date.now() } };
-        if (article) saveTrainingHistory(article.id, updated);
+        if (articleId) saveTrainingHistory(articleId, updated);
         return updated;
       });
 
@@ -375,7 +378,7 @@ export function TrainingReader({
     }
 
     setPhase('feedback');
-  }, [isDrill, currentParagraphIndex, wpm, charLimit, sessionHistory, onWpmChange, article?.id, sentenceMode, currentSentenceIndex, sentenceChunks.length]);
+  }, [isDrill, currentParagraphIndex, wpm, charLimit, sessionHistory, onWpmChange, articleId, sentenceMode, currentSentenceIndex, sentenceChunks.length]);
 
   const handleRecallSubmit = useCallback(() => {
     if (!currentRecallChunk || recallInput.trim() === '') return;

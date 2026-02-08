@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { LibrarySource, LibraryItem } from '../types/electron';
 import type { Article } from '../types';
 
@@ -23,6 +23,7 @@ export function Library({ onAdd, onOpenSettings }: LibraryProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
   const [hideFrontmatter, setHideFrontmatter] = useState(true);
+  const loadRequestRef = useRef(0);
 
   // Load sources on mount
   useEffect(() => {
@@ -30,9 +31,7 @@ export function Library({ onAdd, onOpenSettings }: LibraryProps) {
 
     window.library.getSources().then((sources) => {
       setSources(sources);
-      if (sources.length > 0 && !selectedSource) {
-        setSelectedSource(sources[0]);
-      }
+      setSelectedSource((prev) => prev ?? (sources[0] ?? null));
     });
   }, []);
 
@@ -45,17 +44,21 @@ export function Library({ onAdd, onOpenSettings }: LibraryProps) {
 
     setIsLoading(true);
     setError(null);
+    const requestId = ++loadRequestRef.current;
 
     window.library
       .listBooks(selectedSource.path)
       .then((items) => {
+        if (requestId !== loadRequestRef.current) return;
         setItems(items);
       })
       .catch((err) => {
+        if (requestId !== loadRequestRef.current) return;
         setError(`Failed to load: ${err.message}`);
         setItems([]);
       })
       .finally(() => {
+        if (requestId !== loadRequestRef.current) return;
         setIsLoading(false);
       });
   }, [selectedSource]);

@@ -284,16 +284,14 @@ export function App() {
     const activity = viewState.activity;
 
     rsvp.setWpm(wpm);
-    rsvp.setMode(mode);
-    rsvp.loadArticle(article);
 
     if (activity === 'speed-reading') {
-      rsvp.setDisplayMode('rsvp');
+      rsvp.loadArticle(article, { mode, displayMode: 'rsvp' });
       saveLastSession(article.id, 'speed-reading', 'rsvp');
       setViewState({ screen: 'active-reader' });
       setTimeout(() => rsvp.play(), 100);
     } else if (activity === 'comprehension') {
-      rsvp.setDisplayMode('prediction');
+      rsvp.loadArticle(article, { displayMode: 'prediction' });
       saveLastSession(article.id, 'comprehension', 'prediction');
       setViewState({ screen: 'active-exercise' });
     }
@@ -309,8 +307,7 @@ export function App() {
   }, [settings.lastSession, articles]);
 
   const handleContinue = useCallback((info: { article: Article; activity: Activity; displayMode: DisplayMode }) => {
-    rsvp.loadArticle(info.article);
-    rsvp.setDisplayMode(info.displayMode);
+    rsvp.loadArticle(info.article, { displayMode: info.displayMode });
 
     if (info.activity === 'speed-reading') {
       setViewState({ screen: 'active-reader' });

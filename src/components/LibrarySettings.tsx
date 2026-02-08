@@ -36,12 +36,12 @@ export function LibrarySettings({ onClose }: LibrarySettingsProps) {
       setIsAdding(true);
 
       // Use the folder name as default, or custom name if provided
-      const name = newName.trim() || dirPath.split('/').pop() || 'Library';
+      const name = newName.trim() || dirPath.split(/[\\/]/).pop() || 'Library';
 
       const source: LibrarySource = { name, path: dirPath };
       await window.library.addSource(source);
 
-      setSources([...sources, source]);
+      setSources((prev) => [...prev, source]);
       setNewName('');
     } catch (err) {
       setError(`Failed to add directory: ${(err as Error).message}`);
@@ -56,12 +56,12 @@ export function LibrarySettings({ onClose }: LibrarySettingsProps) {
 
       try {
         await window.library.removeSource(sourcePath);
-        setSources(sources.filter((s) => s.path !== sourcePath));
+        setSources((prev) => prev.filter((s) => s.path !== sourcePath));
       } catch (err) {
         setError(`Failed to remove: ${(err as Error).message}`);
       }
     },
-    [sources]
+    []
   );
 
   if (!window.library) {

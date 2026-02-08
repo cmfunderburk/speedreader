@@ -43,7 +43,7 @@ export function useKeyboard(handlers: KeyboardHandlers): void {
         handlers.onEscape?.();
         break;
     }
-  }, [handlers.onSpace, handlers.onLeft, handlers.onRight, handlers.onBracketLeft, handlers.onBracketRight, handlers.onEscape]);
+  }, [handlers]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);

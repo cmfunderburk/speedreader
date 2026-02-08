@@ -8,7 +8,7 @@ export interface LibrarySource {
 export interface LibraryItem {
   name: string
   path: string
-  type: 'pdf' | 'epub'
+  type: 'pdf' | 'epub' | 'txt'
   size: number
   modifiedAt: number
 }

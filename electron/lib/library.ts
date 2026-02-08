@@ -62,7 +62,8 @@ export function addSource(source: LibrarySource): void {
 
 export function removeSource(sourcePath: string): void {
   const sources = loadSources()
-  const filtered = sources.filter((s) => s.path !== sourcePath)
+  const normalizedTarget = path.resolve(sourcePath)
+  const filtered = sources.filter((s) => path.resolve(s.path) !== normalizedTarget)
   saveSources(filtered)
 }
 

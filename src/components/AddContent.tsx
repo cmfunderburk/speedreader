@@ -15,6 +15,14 @@ function getSpeedReadUrl(): string {
   return window.location.origin;
 }
 
+function getOriginFromUrl(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 export function AddContent({ onAdd, onClose, inline }: AddContentProps) {
   const [tab, setTab] = useState<Tab>('url');
   const [url, setUrl] = useState('');
@@ -23,6 +31,10 @@ export function AddContent({ onAdd, onClose, inline }: AddContentProps) {
   const [source, setSource] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('import') === '1';
+  });
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +99,7 @@ export function AddContent({ onAdd, onClose, inline }: AddContentProps) {
     const title = document.querySelector('h1')?.innerText || document.title;
     const source = location.hostname.replace('www.', '');
     const html = document.documentElement.outerHTML;
-    const data = {type:'speedread-article-html', title, html, source, url: location.href};
+    const data = {type:'speedread-article-html', title, html, source, url: location.href, sourceOrigin: location.origin};
     const w = window.open('${speedReadUrl}?import=1', 'speedread');
     if(w){
       const send = () => w.postMessage(data, '${speedReadUrl}');
@@ -102,11 +114,28 @@ export function AddContent({ onAdd, onClose, inline }: AddContentProps) {
   // Listen for postMessage from bookmarklet
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      if (!importMode) return;
+      if (event.source !== window.opener) return;
+      if (!event.data || typeof event.data !== 'object') return;
+
+      const payload = event.data as {
+        type?: string;
+        title?: string;
+        html?: string;
+        content?: string;
+        source?: string;
+        url?: string;
+        sourceOrigin?: string;
+      };
+      const sourceOrigin = payload.sourceOrigin || (payload.url ? getOriginFromUrl(payload.url) : null);
+      if (!sourceOrigin || sourceOrigin !== event.origin) return;
+
       // Handle HTML content - run Readability for clean extraction
-      if (event.data?.type === 'speedread-article-html') {
+      if (payload.type === 'speedread-article-html') {
+        if (typeof payload.html !== 'string' || typeof payload.url !== 'string') return;
         try {
           const parser = new DOMParser();
-          const doc = parser.parseFromString(event.data.html, 'text/html');
+          const doc = parser.parseFromString(payload.html, 'text/html');
 
           // Run Readability to extract clean article content
           const reader = new Readability(doc);
@@ -114,10 +143,10 @@ export function AddContent({ onAdd, onClose, inline }: AddContentProps) {
 
           if (article && article.textContent) {
             onAdd({
-              title: article.title || event.data.title,
+              title: article.title || payload.title || 'Untitled',
               content: article.textContent.trim(),
-              source: event.data.source,
-              url: event.data.url,
+              source: payload.source || 'Bookmarklet',
+              url: payload.url,
             });
           } else {
             // Fallback if Readability fails
@@ -131,29 +160,29 @@ export function AddContent({ onAdd, onClose, inline }: AddContentProps) {
       }
 
       // Legacy: handle pre-extracted content (backwards compatibility)
-      if (event.data?.type === 'speedread-article') {
+      if (payload.type === 'speedread-article') {
+        if (typeof payload.content !== 'string') return;
         onAdd({
-          title: event.data.title,
-          content: event.data.content,
-          source: event.data.source,
-          url: event.data.url,
+          title: payload.title || 'Untitled',
+          content: payload.content,
+          source: payload.source || 'Bookmarklet',
+          url: payload.url,
         });
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [onAdd]);
+  }, [onAdd, importMode]);
 
   // Check URL params for import mode (auto-show bookmarklet tab)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('import') === '1') {
+    if (importMode) {
       setTab('bookmarklet');
       // Clean up URL
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, []);
+  }, [importMode]);
 
   return (
     <div className="add-content">

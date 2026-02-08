@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Activity, Article, Feed } from '../types';
 import { ArticleQueue } from './ArticleQueue';
 import { AddContent } from './AddContent';
@@ -43,6 +44,8 @@ export function ContentBrowser({
   onOpenLibrarySettings,
   onBack,
 }: ContentBrowserProps) {
+  const [addContentResetKey, setAddContentResetKey] = useState(0);
+
   return (
     <div className="content-browser">
       <div className="content-browser-header">
@@ -52,18 +55,19 @@ export function ContentBrowser({
 
       <div className="content-browser-body">
         <div className="content-browser-main">
-          <ArticleQueue
+            <ArticleQueue
             articles={articles}
             currentArticleId={currentArticleId}
             onSelect={onSelectArticle}
             onRemove={onRemoveArticle}
-            onAddClick={() => {}}
-            wpm={wpm}
-          />
+              onAddClick={() => setAddContentResetKey((prev) => prev + 1)}
+              wpm={wpm}
+            />
         </div>
 
         <div className="content-browser-side">
           <AddContent
+            key={addContentResetKey}
             onAdd={onAddArticle}
             onClose={() => {}}
             inline

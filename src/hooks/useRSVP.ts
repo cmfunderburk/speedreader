@@ -51,7 +51,7 @@ interface UseRSVPReturn {
   setLinesPerPage: (lines: number) => void;
   nextPage: () => void;
   prevPage: () => void;
-  loadArticle: (article: Article) => void;
+  loadArticle: (article: Article, options?: LoadArticleOptions) => void;
   reset: () => void;
   handlePredictionResult: (result: PredictionResult) => void;
   resetPredictionStats: () => void;
@@ -59,6 +59,20 @@ interface UseRSVPReturn {
   rampEnabled: boolean;
   setRampEnabled: (enabled: boolean) => void;
   effectiveWpm: number;
+}
+
+interface LoadArticleOptions {
+  mode?: TokenMode;
+  displayMode?: DisplayMode;
+}
+
+function clampChunkIndex(index: number, totalChunks: number): number {
+  if (totalChunks <= 0) return 0;
+  return Math.max(0, Math.min(index, totalChunks - 1));
+}
+
+function clampProgressIndex(index: number, totalChunks: number): number {
+  return Math.max(0, Math.min(index, totalChunks));
 }
 
 export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
@@ -180,7 +194,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
       const newIndex = Math.floor(progress * newChunks.length);
       setChunks(newChunks);
-      setCurrentChunkIndex(Math.min(newIndex, newChunks.length - 1));
+      setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to saccadeLength changes
   }, [saccadeLength]);
@@ -232,6 +246,9 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
 
     if (currentIndex >= chunks.length - 1) {
       stopTimer();
+      if (articleRef.current) {
+        updateArticlePosition(articleRef.current.id, clampChunkIndex(currentIndex, chunks.length));
+      }
       onComplete?.();
       return;
     }
@@ -241,7 +258,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     setCurrentChunkIndex(nextIndex);
 
     // Persist position periodically
-    if (articleRef.current && nextIndex % 10 === 0) {
+    if (articleRef.current && (nextIndex % 10 === 0 || nextIndex === chunks.length - 1)) {
       updateArticlePosition(articleRef.current.id, nextIndex);
     }
   }, [onComplete, stopTimer]);
@@ -258,20 +275,29 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   }, [chunks.length, currentChunkIndex, startTimer]);
 
   const pause = useCallback(() => {
-    if (!isPlaying) {
-      return;
-    }
     // Accumulate elapsed play time for ramp tracking
-    if (playStartTimeRef.current != null) {
+    if (isPlaying && playStartTimeRef.current != null) {
       accumulatedPlayTimeRef.current += performance.now() - playStartTimeRef.current;
       playStartTimeRef.current = null;
     }
     stopTimer();
-    // Persist position on pause
+
+    // Persist position on pause/exit even when not auto-playing.
     if (articleRef.current) {
-      updateArticlePosition(articleRef.current.id, currentChunkIndex);
+      const total = chunksRef.current.length;
+      if (displayModeRef.current === 'prediction') {
+        updateArticlePredictionPosition(
+          articleRef.current.id,
+          clampProgressIndex(indexRef.current, total)
+        );
+      } else {
+        updateArticlePosition(
+          articleRef.current.id,
+          clampChunkIndex(indexRef.current, total)
+        );
+      }
     }
-  }, [currentChunkIndex, isPlaying, stopTimer]);
+  }, [isPlaying, stopTimer]);
 
   const toggle = useCallback(() => {
     if (isPlaying) {
@@ -282,7 +308,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   }, [isPlaying, pause, play]);
 
   const next = useCallback(() => {
-    setCurrentChunkIndex(i => Math.min(i + 1, chunks.length - 1));
+    setCurrentChunkIndex(i => clampChunkIndex(i + 1, chunks.length));
   }, [chunks.length]);
 
   const prev = useCallback(() => {
@@ -290,7 +316,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   }, []);
 
   const goToIndex = useCallback((index: number) => {
-    setCurrentChunkIndex(Math.max(0, Math.min(index, chunks.length - 1)));
+    setCurrentChunkIndex(clampChunkIndex(index, chunks.length));
   }, [chunks.length]);
 
   // Page navigation for saccade mode (manual navigation when pacer is off)
@@ -323,11 +349,13 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   }, [displayMode, saccadePages.length, chunks, currentChunkIndex]);
 
   const handleSetMode = useCallback((newMode: TokenMode) => {
+    modeRef.current = newMode;
     setMode(newMode);
-    if (article) {
+    const activeArticle = articleRef.current;
+    if (activeArticle) {
       const { chunks: newChunks, pages } = retokenize(
-        article.content,
-        displayMode,
+        activeArticle.content,
+        displayModeRef.current,
         newMode,
         saccadeLengthRef.current,
         linesPerPageRef.current
@@ -338,26 +366,31 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
       const newIndex = Math.floor(progress * newChunks.length);
       setChunks(newChunks);
-      setCurrentChunkIndex(Math.min(newIndex, newChunks.length - 1));
+      setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
     }
-  }, [article, displayMode, chunks.length, currentChunkIndex, retokenize]);
+  }, [chunks.length, currentChunkIndex, retokenize]);
 
   const handleSetDisplayMode = useCallback((newDisplayMode: DisplayMode) => {
     const prevDisplayMode = displayModeRef.current;
+    displayModeRef.current = newDisplayMode;
     setDisplayModeState(newDisplayMode);
 
-    if (article) {
+    const activeArticle = articleRef.current;
+    if (activeArticle) {
       // Save prediction position when leaving prediction mode
       if (prevDisplayMode === 'prediction') {
         predictionWordIndexRef.current = indexRef.current;
-        updateArticlePredictionPosition(article.id, indexRef.current);
+        updateArticlePredictionPosition(
+          activeArticle.id,
+          clampProgressIndex(indexRef.current, chunksRef.current.length)
+        );
       }
 
       // Prediction mode forces word tokenization
-      const effectiveMode = newDisplayMode === 'prediction' ? 'word' : mode;
+      const effectiveMode = newDisplayMode === 'prediction' ? 'word' : modeRef.current;
 
       const { chunks: newChunks, pages } = retokenize(
-        article.content,
+        activeArticle.content,
         newDisplayMode,
         effectiveMode,
         saccadeLengthRef.current,
@@ -371,8 +404,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       } else if (newDisplayMode === 'prediction') {
         // Entering prediction: load word index (from ref or localStorage)
         const savedIndex = predictionWordIndexRef.current ||
-                           article.predictionPosition || 0;
-        setCurrentChunkIndex(Math.min(savedIndex, newChunks.length - 1));
+                           activeArticle.predictionPosition || 0;
+        setCurrentChunkIndex(clampProgressIndex(savedIndex, newChunks.length));
         // Reset stats when entering prediction mode
         setPredictionStats({
           totalWords: 0,
@@ -391,12 +424,12 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         // Entering RSVP/Saccade: use ratio-based mapping
         const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
         const newIndex = Math.floor(progress * newChunks.length);
-        setCurrentChunkIndex(Math.min(newIndex, newChunks.length - 1));
+        setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
       }
 
       setChunks(newChunks);
     }
-  }, [article, mode, chunks.length, currentChunkIndex, retokenize]);
+  }, [chunks.length, currentChunkIndex, retokenize]);
 
   const setCustomCharWidth = useCallback((width: number) => {
     setCustomCharWidthState(width);
@@ -404,11 +437,12 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
 
   const setLinesPerPage = useCallback((lines: number) => {
     setLinesPerPageState(lines);
-    if (article && (displayMode === 'saccade' || displayMode === 'recall')) {
+    const activeArticle = articleRef.current;
+    if (activeArticle && (displayModeRef.current === 'saccade' || displayModeRef.current === 'recall')) {
       const { chunks: newChunks, pages } = retokenize(
-        article.content,
-        displayMode,
-        mode,
+        activeArticle.content,
+        displayModeRef.current,
+        modeRef.current,
         saccadeLengthRef.current,
         lines
       );
@@ -417,29 +451,46 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
       const newIndex = Math.floor(progress * newChunks.length);
       setChunks(newChunks);
-      setCurrentChunkIndex(Math.min(newIndex, newChunks.length - 1));
+      setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
     }
-  }, [article, displayMode, mode, chunks.length, currentChunkIndex, retokenize]);
+  }, [chunks.length, currentChunkIndex, retokenize]);
 
-  const loadArticle = useCallback((newArticle: Article) => {
+  const loadArticle = useCallback((newArticle: Article, options?: LoadArticleOptions) => {
     pause();
     accumulatedPlayTimeRef.current = 0;
     playStartTimeRef.current = null;
-    setArticle(newArticle);
 
+    const requestedMode = options?.mode ?? modeRef.current;
+    const requestedDisplayMode = options?.displayMode ?? displayModeRef.current;
+
+    modeRef.current = requestedMode;
+    displayModeRef.current = requestedDisplayMode;
+    setMode(requestedMode);
+    setDisplayModeState(requestedDisplayMode);
+
+    setArticle(newArticle);
+    predictionWordIndexRef.current = newArticle.predictionPosition || 0;
+
+    const effectiveMode = requestedDisplayMode === 'prediction' ? 'word' : requestedMode;
     const { chunks: newChunks, pages } = retokenize(
       newArticle.content,
-      displayModeRef.current,
-      modeRef.current,
+      requestedDisplayMode,
+      effectiveMode,
       saccadeLengthRef.current,
       linesPerPageRef.current
     );
     setSaccadePages(pages);
     setChunks(newChunks);
 
-    // Resume from saved position if available
-    const startIndex = newArticle.readPosition || 0;
-    setCurrentChunkIndex(Math.min(startIndex, newChunks.length - 1));
+    if (requestedDisplayMode === 'prediction') {
+      const startIndex = predictionWordIndexRef.current || newArticle.predictionPosition || 0;
+      setCurrentChunkIndex(clampProgressIndex(startIndex, newChunks.length));
+    } else if (requestedDisplayMode === 'recall' || requestedDisplayMode === 'training') {
+      setCurrentChunkIndex(0);
+    } else {
+      const startIndex = newArticle.readPosition || 0;
+      setCurrentChunkIndex(clampChunkIndex(startIndex, newChunks.length));
+    }
   }, [pause, retokenize]);
 
   const resetRampTime = useCallback(() => {
@@ -484,16 +535,18 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const advanceSelfPaced = useCallback(() => {
     setCurrentChunkIndex(prevIndex => {
       const total = chunksRef.current.length;
-      return Math.min(prevIndex + 1, total);
+      const nextIndex = Math.min(prevIndex + 1, total);
+      if (articleRef.current && displayModeRef.current === 'prediction') {
+        updateArticlePredictionPosition(articleRef.current.id, nextIndex);
+      }
+      return nextIndex;
     });
   }, []);
 
-  // Compute effective WPM — currentChunkIndex is an intentional dep: it triggers
-  // recomputation on each advance so the displayed ramp WPM stays current.
-  const effectiveWpm = useMemo(() => {
-    if (!rampEnabled) return wpm;
-    return getEffectiveWpm(wpm, getElapsedPlayTimeMs(), rampRate, rampInterval, rampCurve, rampStartPercent);
-  }, [rampEnabled, rampCurve, rampStartPercent, wpm, rampRate, rampInterval, currentChunkIndex, getElapsedPlayTimeMs]);
+  // Recompute every render so ramp display stays in sync with chunk advances.
+  const effectiveWpm = !rampEnabled
+    ? wpm
+    : getEffectiveWpm(wpm, getElapsedPlayTimeMs(), rampRate, rampInterval, rampCurve, rampStartPercent);
 
   // Compute current saccade page
   const currentChunk = chunks[currentChunkIndex] ?? null;

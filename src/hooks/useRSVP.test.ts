@@ -80,6 +80,43 @@ describe('useRSVP — load and reset', () => {
     act(() => result.current.reset());
     expect(result.current.currentChunkIndex).toBe(0);
   });
+
+  it('loadArticle options apply mode and display mode atomically', () => {
+    const article = makeArticle();
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'prediction' })
+    );
+
+    act(() => result.current.loadArticle(article, { mode: 'custom', displayMode: 'rsvp' }));
+
+    expect(result.current.displayMode).toBe('rsvp');
+    expect(result.current.mode).toBe('custom');
+    expect(result.current.chunks.length).toBeLessThan(10);
+  });
+
+  it('prediction mode loads predictionPosition instead of readPosition', () => {
+    const article = makeArticle({ readPosition: 7, predictionPosition: 2 });
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'rsvp' })
+    );
+
+    act(() => result.current.loadArticle(article, { displayMode: 'prediction' }));
+
+    expect(result.current.displayMode).toBe('prediction');
+    expect(result.current.currentChunkIndex).toBe(2);
+  });
+
+  it('keeps index at 0 (never -1) when content tokenizes to zero chunks', () => {
+    const article = makeArticle({ content: '' });
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'rsvp' })
+    );
+
+    act(() => result.current.loadArticle(article, { displayMode: 'rsvp' }));
+
+    expect(result.current.chunks.length).toBe(0);
+    expect(result.current.currentChunkIndex).toBe(0);
+  });
 });
 
 describe('useRSVP — play and pause', () => {
@@ -108,6 +145,21 @@ describe('useRSVP — play and pause', () => {
 
     expect(result.current.isPlaying).toBe(false);
     expect(getStoredPosition(article.id)).toBe(3);
+  });
+
+  it('pause persists prediction position even when self-paced is not playing', () => {
+    const article = makeArticle();
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'prediction' })
+    );
+
+    act(() => result.current.loadArticle(article, { displayMode: 'prediction' }));
+    act(() => result.current.advanceSelfPaced());
+    act(() => result.current.advanceSelfPaced());
+
+    act(() => result.current.pause());
+
+    expect(getStoredPredictionPosition(article.id)).toBe(2);
   });
 
   it('auto-advance moves through chunks over time', () => {
@@ -140,6 +192,20 @@ describe('useRSVP — play and pause', () => {
 
     act(() => result.current.toggle());
     expect(result.current.isPlaying).toBe(false);
+  });
+
+  it('persists final RSVP position when playback completes', () => {
+    const article = makeArticle({ content: 'alpha beta' });
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'rsvp', initialWpm: 800 })
+    );
+
+    act(() => result.current.loadArticle(article));
+    act(() => result.current.play());
+    act(() => vi.advanceTimersByTime(500));
+
+    expect(result.current.currentChunkIndex).toBe(1);
+    expect(getStoredPosition(article.id)).toBe(1);
   });
 });
 
