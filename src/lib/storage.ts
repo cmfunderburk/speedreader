@@ -177,7 +177,7 @@ export function saveTrainingHistory(articleId: string, history: TrainingHistory)
 
 export interface DrillState {
   wpm: number;
-  granularity: number;
+  charLimit: number;
   rollingScores: number[];
   tier?: 'easy' | 'medium' | 'hard';
 }

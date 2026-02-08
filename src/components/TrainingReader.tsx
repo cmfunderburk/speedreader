@@ -17,11 +17,47 @@ const SESSION_PRESETS = [
   { label: '20 min', value: 20 * 60 },
 ] as const;
 
-// Granularity ratchet parameters
-const RATCHET_WINDOW = 5;
-const RATCHET_UP_THRESHOLD = 0.9;
-const RATCHET_DOWN_THRESHOLD = 0.7;
-const CATASTROPHIC_THRESHOLD = 0.5;
+// Difficulty ladder parameters
+const MIN_CHAR_LIMIT = 50;
+const CHAR_LIMIT_PHASE2_CAP = 200;
+const WPM_PHASE1_CAP = 250;
+const WPM_PHASE3_CAP = 400;
+const WPM_STEP_UP = 15;
+const WPM_STEP_DOWN = 25;
+const CHAR_STEP_UP = 20;
+const CHAR_STEP_DOWN = 20;
+
+/**
+ * Difficulty ladder: WPM first → charLimit → WPM again → charLimit only.
+ * Phase 1: WPM  [100..250], charLimit = MIN
+ * Phase 2: WPM  = 250,      charLimit [MIN..200]
+ * Phase 3: WPM  [250..400], charLimit = 200
+ * Phase 4: WPM  = 400,      charLimit [200..∞)
+ */
+function adjustDrillDifficulty(
+  wpm: number,
+  charLimit: number,
+  success: boolean,
+): { wpm: number; charLimit: number } {
+  if (success) {
+    if (wpm < WPM_PHASE1_CAP)
+      return { wpm: Math.min(WPM_PHASE1_CAP, wpm + WPM_STEP_UP), charLimit };
+    if (charLimit < CHAR_LIMIT_PHASE2_CAP)
+      return { wpm, charLimit: Math.min(CHAR_LIMIT_PHASE2_CAP, charLimit + CHAR_STEP_UP) };
+    if (wpm < WPM_PHASE3_CAP)
+      return { wpm: Math.min(WPM_PHASE3_CAP, wpm + WPM_STEP_UP), charLimit };
+    return { wpm, charLimit: charLimit + CHAR_STEP_UP };
+  } else {
+    // Reverse order: undo the most-recently-earned dial first
+    if (charLimit > CHAR_LIMIT_PHASE2_CAP)
+      return { wpm, charLimit: Math.max(CHAR_LIMIT_PHASE2_CAP, charLimit - CHAR_STEP_DOWN) };
+    if (wpm > WPM_PHASE1_CAP && charLimit >= CHAR_LIMIT_PHASE2_CAP)
+      return { wpm: Math.max(WPM_PHASE1_CAP, wpm - WPM_STEP_DOWN), charLimit };
+    if (charLimit > MIN_CHAR_LIMIT)
+      return { wpm, charLimit: Math.max(MIN_CHAR_LIMIT, charLimit - CHAR_STEP_DOWN) };
+    return { wpm: Math.max(100, wpm - WPM_STEP_DOWN), charLimit };
+  }
+}
 
 interface TrainingReaderProps {
   article?: Article;
@@ -119,7 +155,7 @@ export function TrainingReader({
   const [corpusInfo, setCorpusInfo] = useState<CorpusInfo | null>(null);
   const [drillArticle, setDrillArticle] = useState<CorpusArticle | null>(null);
   const [drillSentenceIndex, setDrillSentenceIndex] = useState(0);
-  const [granularity, setGranularity] = useState(() => savedDrill?.granularity ?? 1);
+  const [charLimit, setCharLimit] = useState(() => savedDrill?.charLimit ?? MIN_CHAR_LIMIT);
   const [sessionTimeLimit, setSessionTimeLimit] = useState<number | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [rollingScores, setRollingScores] = useState<number[]>(() => savedDrill?.rollingScores ?? []);
@@ -136,11 +172,12 @@ export function TrainingReader({
 
   // Persist cross-session drill state whenever it changes
   useEffect(() => {
-    saveDrillState({ wpm, granularity, rollingScores, tier: drillTier });
-  }, [wpm, granularity, rollingScores, drillTier]);
+    saveDrillState({ wpm, charLimit, rollingScores, tier: drillTier });
+  }, [wpm, charLimit, rollingScores, drillTier]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const inputContainerRef = useRef<HTMLSpanElement>(null);
+  const lastDrillAdjRef = useRef({ wpmDelta: 0, charDelta: 0 });
 
   const currentParagraph = paragraphs[currentParagraphIndex] ?? '';
 
@@ -155,11 +192,20 @@ export function TrainingReader({
     [drillArticle?.text]
   );
 
-  const drillRoundText = useMemo(() => {
-    if (!isDrill || drillSentences.length === 0) return '';
-    const end = Math.min(drillSentenceIndex + granularity, drillSentences.length);
-    return drillSentences.slice(drillSentenceIndex, end).join(' ');
-  }, [isDrill, drillSentences, drillSentenceIndex, granularity]);
+  // Accumulate sentences up to charLimit (always at least one)
+  const { drillRoundText, drillRoundSentenceCount } = useMemo(() => {
+    if (!isDrill || drillSentences.length === 0)
+      return { drillRoundText: '', drillRoundSentenceCount: 0 };
+    let text = drillSentences[drillSentenceIndex];
+    let count = 1;
+    for (let i = drillSentenceIndex + 1; i < drillSentences.length; i++) {
+      const next = drillSentences[i];
+      if (text.length + 1 + next.length > charLimit) break;
+      text += ' ' + next;
+      count++;
+    }
+    return { drillRoundText: text, drillRoundSentenceCount: count };
+  }, [isDrill, drillSentences, drillSentenceIndex, charLimit]);
 
   const currentText = isDrill && drillArticle
     ? drillRoundText
@@ -284,25 +330,20 @@ export function TrainingReader({
     const scoreNorm = score / 100;
 
     if (isDrill) {
-      // Random drill: track stats, update granularity ratchet
+      // Random drill: track stats, apply difficulty ladder
       setDrillRoundsCompleted(n => n + 1);
       setDrillScoreSum(s => s + scoreNorm);
+      setRollingScores(prev => [...prev, scoreNorm]);
 
-      // Catastrophic: immediate step-down
-      if (scoreNorm < CATASTROPHIC_THRESHOLD) {
-        setGranularity(g => Math.max(1, g - 1));
+      // Ladder adjustment: WPM→charLimit→WPM→charLimit
+      if (score < 90 || score >= 95) {
+        const adj = adjustDrillDifficulty(wpm, charLimit, score >= 95);
+        lastDrillAdjRef.current = { wpmDelta: adj.wpm - wpm, charDelta: adj.charLimit - charLimit };
+        if (adj.wpm !== wpm) { setWpm(adj.wpm); onWpmChange(adj.wpm); }
+        if (adj.charLimit !== charLimit) setCharLimit(adj.charLimit);
+      } else {
+        lastDrillAdjRef.current = { wpmDelta: 0, charDelta: 0 };
       }
-
-      // Rolling window
-      setRollingScores(prev => {
-        const updated = [...prev, scoreNorm].slice(-RATCHET_WINDOW);
-        if (updated.length >= RATCHET_WINDOW) {
-          const avg = updated.reduce((a, b) => a + b, 0) / updated.length;
-          if (avg >= RATCHET_UP_THRESHOLD) setGranularity(g => g + 1);
-          else if (avg < RATCHET_DOWN_THRESHOLD) setGranularity(g => Math.max(1, g - 1));
-        }
-        return updated;
-      });
     } else {
       // Article mode: persist to training history
       const result: TrainingParagraphResult = {
@@ -321,20 +362,20 @@ export function TrainingReader({
         if (article) saveTrainingHistory(article.id, updated);
         return updated;
       });
-    }
 
-    // Determine WPM adjustment (same rules for both modes)
-    let newWpm = wpm;
-    if (score < 90) {
-      newWpm = Math.max(100, wpm - 25);
-    } else if (score >= 95) {
-      newWpm = Math.min(800, wpm + 15);
+      // Article mode WPM adjustment
+      let newWpm = wpm;
+      if (score < 90) {
+        newWpm = Math.max(100, wpm - 25);
+      } else if (score >= 95) {
+        newWpm = Math.min(800, wpm + 15);
+      }
+      setWpm(newWpm);
+      onWpmChange(newWpm);
     }
-    setWpm(newWpm);
-    onWpmChange(newWpm);
 
     setPhase('feedback');
-  }, [isDrill, currentParagraphIndex, wpm, sessionHistory, onWpmChange, article?.id, sentenceMode, currentSentenceIndex, sentenceChunks.length]);
+  }, [isDrill, currentParagraphIndex, wpm, charLimit, sessionHistory, onWpmChange, article?.id, sentenceMode, currentSentenceIndex, sentenceChunks.length]);
 
   const handleRecallSubmit = useCallback(() => {
     if (!currentRecallChunk || recallInput.trim() === '') return;
@@ -402,6 +443,7 @@ export function TrainingReader({
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation();
       handleRecallSubmit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -456,7 +498,7 @@ export function TrainingReader({
       }
 
       // Advance within article or fetch next
-      const nextIdx = drillSentenceIndex + granularity;
+      const nextIdx = drillSentenceIndex + drillRoundSentenceCount;
       if (nextIdx < drillSentences.length) {
         setDrillSentenceIndex(nextIdx);
         setPhase('reading');
@@ -484,7 +526,7 @@ export function TrainingReader({
         setPhase('reading');
       }
     }
-  }, [isDrill, shouldRepeat, currentParagraphIndex, paragraphs.length, sessionTimeLimit, sessionStartTime, drillSentenceIndex, granularity, drillSentences.length, drillTier]);
+  }, [isDrill, shouldRepeat, currentParagraphIndex, paragraphs.length, sessionTimeLimit, sessionStartTime, drillSentenceIndex, drillRoundSentenceCount, drillSentences.length, drillTier]);
 
   const handleStart = useCallback(() => {
     readingStepRef.current = 0;
@@ -530,6 +572,9 @@ export function TrainingReader({
   }, []);
 
   // Spacebar/Enter to continue from feedback screen
+  // Delay listener registration to prevent the same keydown event (or a fast
+  // key-repeat) that submitted the final recall word from immediately advancing
+  // past the feedback screen before the user can read it.
   useEffect(() => {
     if (phase === 'feedback') {
       const handler = (e: globalThis.KeyboardEvent) => {
@@ -538,8 +583,13 @@ export function TrainingReader({
           handleContinue();
         }
       };
-      window.addEventListener('keydown', handler);
-      return () => window.removeEventListener('keydown', handler);
+      const timer = setTimeout(() => {
+        window.addEventListener('keydown', handler);
+      }, 200);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('keydown', handler);
+      };
     }
   }, [phase, handleContinue]);
 
@@ -593,7 +643,11 @@ export function TrainingReader({
 
           <p className="training-setup-desc">
             {isDrill
-              ? 'Random passages from Wikipedia. Read at saccade pace, then recall.'
+              ? drillTier === 'easy'
+                ? 'Simple English Wikipedia (Good and Very Good articles). Read at saccade pace, then recall.'
+                : drillTier === 'hard'
+                  ? 'Standard Wikipedia Good Article introductions. Read at saccade pace, then recall.'
+                  : 'FK-graded intermediate passages from standard Wikipedia (coming soon). Read at saccade pace, then recall.'
               : 'Read each paragraph at saccade pace, then recall its words.'
             }
             {' '}WPM adjusts based on your comprehension score.
@@ -789,7 +843,8 @@ export function TrainingReader({
 
   // Feedback phase
   if (phase === 'feedback') {
-    const wpmDelta = (() => {
+    const drillAdj = lastDrillAdjRef.current;
+    const articleWpmDelta = (() => {
       if (lastScore < 90) return -25;
       if (lastScore >= 95) return +15;
       return 0;
@@ -801,7 +856,7 @@ export function TrainingReader({
           <span className="training-phase-label">Feedback</span>
           <span className="training-progress">
             {isDrill
-              ? `${drillArticle?.title ?? ''} · ${Math.min(drillSentenceIndex + granularity, drillSentences.length)}/${drillSentences.length} · ×${granularity}`
+              ? `${drillArticle?.title ?? ''} · ${Math.min(drillSentenceIndex + drillRoundSentenceCount, drillSentences.length)}/${drillSentences.length} · ≤${charLimit}ch`
               : `Paragraph ${currentParagraphIndex + 1} / ${paragraphs.length}`
             }
           </span>
@@ -822,10 +877,27 @@ export function TrainingReader({
               From: {drillArticle.title} ({drillArticle.domain})
             </div>
           )}
-          {wpmDelta !== 0 && (
-            <div className="training-wpm-change">
-              WPM {wpmDelta > 0 ? '+' : ''}{wpmDelta} → {wpm}
-            </div>
+          {isDrill ? (
+            <>
+              {drillAdj.wpmDelta !== 0 && (
+                <div className="training-wpm-change">
+                  WPM {drillAdj.wpmDelta > 0 ? '+' : ''}{drillAdj.wpmDelta} → {wpm}
+                </div>
+              )}
+              {drillAdj.charDelta !== 0 && (
+                <div className="training-wpm-change">
+                  Limit {drillAdj.charDelta > 0 ? '+' : ''}{drillAdj.charDelta} → {charLimit}ch
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {articleWpmDelta !== 0 && (
+                <div className="training-wpm-change">
+                  WPM {articleWpmDelta > 0 ? '+' : ''}{articleWpmDelta} → {wpm}
+                </div>
+              )}
+            </>
           )}
           {shouldRepeat && (
             <div className="training-repeat-notice">
@@ -849,7 +921,7 @@ export function TrainingReader({
           <span className="training-phase-label">{paused ? 'Paused' : 'Read'}</span>
           <span className="training-progress">
             {isDrill
-              ? `${drillArticle?.title ?? ''} · ${Math.min(drillSentenceIndex + granularity, drillSentences.length)}/${drillSentences.length} · ×${granularity}`
+              ? `${drillArticle?.title ?? ''} · ${Math.min(drillSentenceIndex + drillRoundSentenceCount, drillSentences.length)}/${drillSentences.length} · ≤${charLimit}ch`
               : <>Paragraph {currentParagraphIndex + 1} / {paragraphs.length}
                 {sentenceMode && sentenceChunks.length > 1 && ` · Sentence ${currentSentenceIndex + 1} / ${sentenceChunks.length}`}</>
             }
@@ -892,7 +964,7 @@ export function TrainingReader({
         <span className="training-phase-label">{paused ? 'Paused' : 'Recall'}</span>
         <span className="training-progress">
           {isDrill
-            ? `${drillArticle?.title ?? ''} · ${Math.min(drillSentenceIndex + granularity, drillSentences.length)}/${drillSentences.length} · ×${granularity} · ${recallWordIndex} / ${totalRecallWords} words`
+            ? `${drillArticle?.title ?? ''} · ${Math.min(drillSentenceIndex + drillRoundSentenceCount, drillSentences.length)}/${drillSentences.length} · ≤${charLimit}ch · ${recallWordIndex} / ${totalRecallWords} words`
             : sentenceMode && sentenceChunks.length > 1
               ? `Sentence ${currentSentenceIndex + 1} / ${sentenceChunks.length} · ${recallWordIndex} / ${totalRecallWords} words`
               : `${recallWordIndex} / ${totalRecallWords} words`
