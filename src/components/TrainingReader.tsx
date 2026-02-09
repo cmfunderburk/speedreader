@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from
 import type { Article, Chunk, TrainingParagraphResult } from '../types';
 import type { CorpusArticle, CorpusInfo, CorpusTier } from '../types/electron';
 import { segmentIntoParagraphs, segmentIntoSentences, tokenizeParagraphSaccade, tokenizeParagraphRecall, calculateSaccadeLineDuration, countWords } from '../lib/saccade';
-import { isExactMatch, isWordKnown } from '../lib/levenshtein';
+import { isExactMatch, isWordKnown, isDetailWord } from '../lib/levenshtein';
 import { loadTrainingHistory, saveTrainingHistory, loadDrillState, saveDrillState } from '../lib/storage';
 import type { TrainingHistory, DrillState } from '../lib/storage';
 import { SaccadeLineComponent } from './SaccadeReader';
@@ -84,6 +84,8 @@ interface ParagraphStats {
   totalWords: number;
   exactMatches: number;
   knownWords: number;
+  detailTotal: number;
+  detailKnown: number;
 }
 
 export function TrainingReader({
@@ -133,6 +135,17 @@ export function TrainingReader({
       // Ignore storage failures (private mode, quota).
     }
   }, []);
+  // Score details toggle: include proper nouns / numbers in the score
+  const [scoreDetails, setScoreDetailsState] = useState(() => {
+    try { return localStorage.getItem('speedread_training_score_details') === 'true'; } catch { return false; }
+  });
+  const setScoreDetails = useCallback((on: boolean) => {
+    setScoreDetailsState(on);
+    try { localStorage.setItem('speedread_training_score_details', String(on)); } catch {
+      // Ignore storage failures (private mode, quota).
+    }
+  }, []);
+
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
 
   // Reading phase state
@@ -146,7 +159,7 @@ export function TrainingReader({
   const [showingMiss, setShowingMiss] = useState(false);
   const [lastMissResult, setLastMissResult] = useState<{ predicted: string; actual: string } | null>(null);
   const [completedWords, setCompletedWords] = useState<Map<WordKey, CompletedWord>>(new Map());
-  const [paragraphStats, setParagraphStats] = useState<ParagraphStats>({ totalWords: 0, exactMatches: 0, knownWords: 0 });
+  const [paragraphStats, setParagraphStats] = useState<ParagraphStats>({ totalWords: 0, exactMatches: 0, knownWords: 0, detailTotal: 0, detailKnown: 0 });
 
   // Session history
   const [sessionHistory, setSessionHistory] = useState<TrainingParagraphResult[]>([]);
@@ -180,6 +193,7 @@ export function TrainingReader({
   const inputRef = useRef<HTMLInputElement>(null);
   const inputContainerRef = useRef<HTMLSpanElement>(null);
   const lastDrillAdjRef = useRef({ wpmDelta: 0, charDelta: 0 });
+  const lastDetailCountRef = useRef(0);
 
   const currentParagraph = paragraphs[currentParagraphIndex] ?? '';
 
@@ -227,6 +241,15 @@ export function TrainingReader({
   );
 
   const currentRecallChunk = recallData.chunks[recallWordIndex] ?? null;
+
+  // Determine if a recall chunk is a detail word (proper noun or number)
+  const isChunkDetail = useCallback((chunkIndex: number) => {
+    const chunk = recallData.chunks[chunkIndex];
+    if (!chunk) return false;
+    const isFirst = chunkIndex === 0 ||
+      /[.?!]$/.test(recallData.chunks[chunkIndex - 1].text);
+    return isDetailWord(chunk.text, isFirst);
+  }, [recallData.chunks]);
 
   // --- Reading phase timer ---
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -301,21 +324,27 @@ export function TrainingReader({
   }, [phase, recallWordIndex]);
 
   // --- Recall handlers ---
-  const finishRecallPhase = useCallback((stats: ParagraphStats, finalWord: { known: boolean; exact: boolean } | null) => {
+  const finishRecallPhase = useCallback((stats: ParagraphStats, finalWord: { known: boolean; exact: boolean; isDetail: boolean } | null) => {
     // Compute final stats including the last word
     let totalWords = stats.totalWords;
     let exactMatches = stats.exactMatches;
     let knownWords = stats.knownWords;
+    let detailTotal = stats.detailTotal;
+    let detailKnown = stats.detailKnown;
 
     if (finalWord) {
       totalWords += 1;
       exactMatches += finalWord.exact ? 1 : 0;
       knownWords += finalWord.known ? 1 : 0;
+      if (finalWord.isDetail) {
+        detailTotal += 1;
+        detailKnown += finalWord.known ? 1 : 0;
+      }
     }
 
     // Sentence mode: if more sentences remain, advance and loop back to reading (article mode only)
     if (!isDrill && sentenceMode && currentSentenceIndex < sentenceChunks.length - 1) {
-      setParagraphStats({ totalWords, exactMatches, knownWords });
+      setParagraphStats({ totalWords, exactMatches, knownWords, detailTotal, detailKnown });
       setCurrentSentenceIndex(prev => prev + 1);
       setRecallInput('');
       setRecallWordIndex(0);
@@ -329,7 +358,10 @@ export function TrainingReader({
       return;
     }
 
-    const score = totalWords > 0 ? Math.round((knownWords / totalWords) * 100) : 0;
+    // Effective score: exclude detail words unless scoreDetails is on
+    const effectiveTotal = scoreDetails ? totalWords : totalWords - detailTotal;
+    const effectiveKnown = scoreDetails ? knownWords : knownWords - detailKnown;
+    const score = effectiveTotal > 0 ? Math.round((effectiveKnown / effectiveTotal) * 100) : 0;
     const scoreNorm = score / 100;
 
     if (isDrill) {
@@ -377,8 +409,9 @@ export function TrainingReader({
       onWpmChange(newWpm);
     }
 
+    lastDetailCountRef.current = detailTotal;
     setPhase('feedback');
-  }, [isDrill, currentParagraphIndex, wpm, charLimit, sessionHistory, onWpmChange, articleId, sentenceMode, currentSentenceIndex, sentenceChunks.length]);
+  }, [isDrill, currentParagraphIndex, wpm, charLimit, sessionHistory, onWpmChange, articleId, sentenceMode, currentSentenceIndex, sentenceChunks.length, scoreDetails]);
 
   const handleRecallSubmit = useCallback(() => {
     if (!currentRecallChunk || recallInput.trim() === '') return;
@@ -386,6 +419,7 @@ export function TrainingReader({
     const actual = currentRecallChunk.text;
     const known = isWordKnown(recallInput, actual);
     const exact = isExactMatch(recallInput, actual);
+    const detail = isChunkDetail(recallWordIndex);
 
     const key = makeWordKey(
       currentRecallChunk.saccade!.lineIndex,
@@ -398,12 +432,14 @@ export function TrainingReader({
 
       const nextIdx = recallWordIndex + 1;
       if (nextIdx >= recallData.chunks.length) {
-        finishRecallPhase(paragraphStats, { known: true, exact });
+        finishRecallPhase(paragraphStats, { known: true, exact, isDetail: detail });
       } else {
         setParagraphStats(prev => ({
           totalWords: prev.totalWords + 1,
           exactMatches: prev.exactMatches + (exact ? 1 : 0),
           knownWords: prev.knownWords + 1,
+          detailTotal: prev.detailTotal + (detail ? 1 : 0),
+          detailKnown: prev.detailKnown + (detail ? 1 : 0),
         }));
         setRecallWordIndex(nextIdx);
       }
@@ -412,36 +448,46 @@ export function TrainingReader({
       setLastMissResult({ predicted: recallInput.trim(), actual });
       setShowingMiss(true);
     }
-  }, [recallInput, currentRecallChunk, recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase]);
+  }, [recallInput, currentRecallChunk, recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase, isChunkDetail]);
 
   const handleGiveUp = useCallback(() => {
     // Score all remaining words (including current) as misses
     const remaining = recallData.chunks.length - recallWordIndex;
+    // Count detail words among remaining (missed) chunks
+    let remainingDetails = 0;
+    for (let i = recallWordIndex; i < recallData.chunks.length; i++) {
+      if (isChunkDetail(i)) remainingDetails++;
+    }
     finishRecallPhase({
       totalWords: paragraphStats.totalWords + remaining,
       exactMatches: paragraphStats.exactMatches,
       knownWords: paragraphStats.knownWords,
+      detailTotal: paragraphStats.detailTotal + remainingDetails,
+      detailKnown: paragraphStats.detailKnown,
     }, null);
-  }, [recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase]);
+  }, [recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase, isChunkDetail]);
 
   const handleMissContinue = useCallback(() => {
     setShowingMiss(false);
     setLastMissResult(null);
     setRecallInput('');
 
+    const detail = isChunkDetail(recallWordIndex);
     const nextIdx = recallWordIndex + 1;
     if (nextIdx >= recallData.chunks.length) {
-      finishRecallPhase(paragraphStats, { known: false, exact: false });
+      finishRecallPhase(paragraphStats, { known: false, exact: false, isDetail: detail });
     } else {
       setParagraphStats(prev => ({
         totalWords: prev.totalWords + 1,
         exactMatches: prev.exactMatches,
         knownWords: prev.knownWords,
+        detailTotal: prev.detailTotal + (detail ? 1 : 0),
+        detailKnown: prev.detailKnown,
       }));
       setRecallWordIndex(nextIdx);
     }
     setTimeout(() => inputRef.current?.focus(), 0);
-  }, [recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase]);
+  }, [recallWordIndex, recallData.chunks.length, paragraphStats, finishRecallPhase, isChunkDetail]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === ' ' || e.key === 'Enter') {
@@ -484,7 +530,7 @@ export function TrainingReader({
     setShowingMiss(false);
     setLastMissResult(null);
     setCompletedWords(new Map());
-    setParagraphStats({ totalWords: 0, exactMatches: 0, knownWords: 0 });
+    setParagraphStats({ totalWords: 0, exactMatches: 0, knownWords: 0, detailTotal: 0, detailKnown: 0 });
     setCurrentLineIndex(-1);
     readingStepRef.current = 0;
     setReadingLeadIn(true);
@@ -563,7 +609,7 @@ export function TrainingReader({
     setRecallInput('');
     setRecallWordIndex(0);
     setCompletedWords(new Map());
-    setParagraphStats({ totalWords: 0, exactMatches: 0, knownWords: 0 });
+    setParagraphStats({ totalWords: 0, exactMatches: 0, knownWords: 0, detailTotal: 0, detailKnown: 0 });
     setCurrentLineIndex(-1);
     readingStepRef.current = 0;
     setCurrentSentenceIndex(0);
@@ -701,6 +747,14 @@ export function TrainingReader({
                   ))}
                 </select>
               </label>
+              <label className="training-setup-sentence">
+                <input
+                  type="checkbox"
+                  checked={scoreDetails}
+                  onChange={e => setScoreDetails(e.target.checked)}
+                />
+                <span className="control-label">Score names/dates</span>
+              </label>
               <div className="training-setup-info">
                 {tierInfo?.totalArticles.toLocaleString() ?? 0} articles
               </div>
@@ -730,6 +784,14 @@ export function TrainingReader({
                   onChange={e => setSentenceMode(e.target.checked)}
                 />
                 <span className="control-label">Sentence mode</span>
+              </label>
+              <label className="training-setup-sentence">
+                <input
+                  type="checkbox"
+                  checked={scoreDetails}
+                  onChange={e => setScoreDetails(e.target.checked)}
+                />
+                <span className="control-label">Score names/dates</span>
               </label>
               <div className="training-setup-info">
                 {paragraphs.length} paragraph{paragraphs.length !== 1 ? 's' : ''}
@@ -878,6 +940,11 @@ export function TrainingReader({
           {isDrill && drillArticle && (
             <div className="training-score-detail">
               From: {drillArticle.title} ({drillArticle.domain})
+            </div>
+          )}
+          {lastDetailCountRef.current > 0 && (
+            <div className="training-score-detail">
+              ({lastDetailCountRef.current} name{lastDetailCountRef.current !== 1 ? 's' : ''}/date{lastDetailCountRef.current !== 1 ? 's' : ''} {scoreDetails ? 'included' : 'excluded'})
             </div>
           )}
           {isDrill ? (

@@ -110,6 +110,25 @@ export function isWordKnown(predicted: string, actual: string): boolean {
 }
 
 /**
+ * Detect "detail words" — proper nouns and numbers that require rote
+ * memorization rather than comprehension-based recall.
+ *
+ * A word is a detail word if:
+ * - It contains any digit, OR
+ * - Its first alphabetic character is uppercase AND it is not sentence-initial
+ *
+ * Single-character words (like "I") are excluded.
+ */
+export function isDetailWord(word: string, isFirstInSentence: boolean): boolean {
+  if (word.length <= 1) return false;
+  if (/\d/.test(word)) return true;
+  if (isFirstInSentence) return false;
+  const firstAlpha = word.match(/[a-zA-Z]/);
+  if (!firstAlpha) return false;
+  return firstAlpha[0] === firstAlpha[0].toUpperCase();
+}
+
+/**
  * Derive display percentages from prediction stats.
  */
 export function predictionScorePercents(stats: { totalWords: number; exactMatches: number; knownWords: number }): {
