@@ -17,7 +17,6 @@ interface ContentBrowserProps {
   currentArticleId?: string;
   feeds: Feed[];
   isLoadingFeed: boolean;
-  wpm: number;
   onSelectArticle: (article: Article) => void;
   onRemoveArticle: (id: string) => void;
   onAddArticle: (article: Omit<Article, 'id' | 'addedAt' | 'readPosition' | 'isRead'>) => void;
@@ -34,7 +33,6 @@ export function ContentBrowser({
   currentArticleId,
   feeds,
   isLoadingFeed,
-  wpm,
   onSelectArticle,
   onRemoveArticle,
   onAddArticle,
@@ -61,7 +59,6 @@ export function ContentBrowser({
             onSelect={onSelectArticle}
             onRemove={onRemoveArticle}
               onAddClick={() => setAddContentResetKey((prev) => prev + 1)}
-              wpm={wpm}
             />
         </div>
 

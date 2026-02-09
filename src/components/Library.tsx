@@ -14,6 +14,14 @@ interface BookGroup {
   frontmatterCount: number;
 }
 
+// Format book name for display (convert kebab-case to title case)
+export const formatBookName = (name: string): string => {
+  return name
+    .split(/[-_]/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 export function Library({ onAdd, onOpenSettings }: LibraryProps) {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [selectedSource, setSelectedSource] = useState<LibrarySource | null>(null);
@@ -75,7 +83,8 @@ export function Library({ onAdd, onOpenSettings }: LibraryProps) {
         onAdd({
           title: content.title,
           content: content.content,
-          source: `Library: ${item.name}`,
+          source: 'Library',
+          group: item.parentDir ? formatBookName(item.parentDir) : undefined,
         });
       } catch (err) {
         setError(`Failed to open: ${(err as Error).message}`);
@@ -150,14 +159,6 @@ export function Library({ onAdd, onOpenSettings }: LibraryProps) {
       return next;
     });
   }, []);
-
-  // Format book name for display (convert kebab-case to title case)
-  const formatBookName = (name: string): string => {
-    return name
-      .split(/[-_]/)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
 
   if (!window.library) {
     return null;

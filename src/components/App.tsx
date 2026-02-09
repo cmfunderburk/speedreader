@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Reader } from './Reader';
 import { ReaderControls } from './ReaderControls';
 import { ProgressBar } from './ProgressBar';
@@ -18,10 +18,11 @@ import { calculateRemainingTime, formatTime, calculateProgress } from '../lib/rs
 import { loadArticles, saveArticles, loadFeeds, saveFeeds, generateId, loadSettings, saveSettings, loadDailyInfo, saveDailyInfo } from '../lib/storage';
 import type { Settings } from '../lib/storage';
 import { fetchFeed } from '../lib/feeds';
-import { fetchDailyArticle, getTodayUTC } from '../lib/wikipedia';
+import { fetchDailyArticle, fetchRandomFeaturedArticle, getTodayUTC } from '../lib/wikipedia';
 import type { Article, Feed, TokenMode, Activity, DisplayMode } from '../types';
 import { PREDICTION_LINE_WIDTHS } from '../types';
 import { measureTextMetrics } from '../lib/textMetrics';
+import { formatBookName } from './Library';
 
 type ViewState =
   | { screen: 'home' }
@@ -52,12 +53,17 @@ export function App() {
     const loaded = loadArticles();
     let needsUpdate = false;
     const migrated = loaded.map(article => {
-      if (article.charCount != null && article.wordCount != null) {
-        return article;
+      let updated = article;
+      if (updated.charCount == null || updated.wordCount == null) {
+        needsUpdate = true;
+        const metrics = measureTextMetrics(updated.content);
+        updated = { ...updated, ...metrics };
       }
-      needsUpdate = true;
-      const metrics = measureTextMetrics(article.content);
-      return { ...article, ...metrics };
+      if (!updated.group && (updated.source === 'Wikipedia Daily' || updated.source === 'Wikipedia Featured')) {
+        needsUpdate = true;
+        updated = { ...updated, group: 'Wikipedia' };
+      }
+      return updated;
     });
     if (needsUpdate) {
       saveArticles(migrated);
@@ -65,11 +71,47 @@ export function App() {
     }
     return loaded;
   });
+
+  // One-time backfill: assign groups to legacy Library articles using directory metadata
+  useEffect(() => {
+    if (!window.library) return;
+    const PREFIX = 'Library: ';
+    (async () => {
+      const sources = await window.library!.getSources();
+      const filenameToGroup = new Map<string, string>();
+      for (const source of sources) {
+        const items = await window.library!.listBooks(source.path);
+        for (const item of items) {
+          if (item.parentDir) {
+            filenameToGroup.set(item.name, formatBookName(item.parentDir));
+          }
+        }
+      }
+      setArticles(prev => {
+        let changed = false;
+        const updated = prev.map(article => {
+          if (article.group || !article.source.startsWith(PREFIX)) return article;
+          changed = true;
+          const filename = article.source.slice(PREFIX.length);
+          const group = filenameToGroup.get(filename);
+          return { ...article, source: 'Library', ...(group ? { group } : {}) };
+        });
+        if (changed) {
+          saveArticles(updated);
+          return updated;
+        }
+        return prev;
+      });
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
   const [viewState, setViewState] = useState<ViewState>(getInitialView);
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
   const [dailyStatus, setDailyStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [dailyError, setDailyError] = useState<string | null>(null);
+  const [randomStatus, setRandomStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [randomError, setRandomError] = useState<string | null>(null);
 
   const rsvp = useRSVP({
     initialWpm: settings.defaultWpm,
@@ -305,6 +347,7 @@ export function App() {
           addedAt: Date.now(),
           readPosition: 0,
           isRead: false,
+          group: 'Wikipedia',
           ...metrics,
         };
         const updated = [...articles, article];
@@ -321,6 +364,47 @@ export function App() {
     } catch (err) {
       setDailyStatus('error');
       setDailyError(err instanceof Error ? err.message : 'Failed to fetch daily article');
+    }
+  }, [articles, rsvp, saveLastSession]);
+
+  const handleStartRandom = useCallback(async () => {
+    setRandomStatus('loading');
+    setRandomError(null);
+    try {
+      const { title, content, url } = await fetchRandomFeaturedArticle();
+
+      // Deduplicate by URL
+      const existing = articles.find(a => a.url === url);
+      let article: Article;
+      if (existing) {
+        article = existing;
+      } else {
+        const metrics = measureTextMetrics(content);
+        article = {
+          id: generateId(),
+          title,
+          content,
+          source: 'Wikipedia Featured',
+          url,
+          addedAt: Date.now(),
+          readPosition: 0,
+          isRead: false,
+          group: 'Wikipedia',
+          ...metrics,
+        };
+        const updated = [...articles, article];
+        setArticles(updated);
+        saveArticles(updated);
+      }
+
+      rsvp.loadArticle(article, { displayMode: 'saccade' });
+      saveLastSession(article.id, 'paced-reading', 'saccade');
+      setRandomStatus('idle');
+      setViewState({ screen: 'active-reader' });
+      setTimeout(() => rsvp.play(), 100);
+    } catch (err) {
+      setRandomStatus('error');
+      setRandomError(err instanceof Error ? err.message : 'Failed to fetch article');
     }
   }, [articles, rsvp, saveLastSession]);
 
@@ -499,6 +583,9 @@ export function App() {
             onStartDaily={handleStartDaily}
             dailyStatus={dailyStatus}
             dailyError={dailyError}
+            onStartRandom={handleStartRandom}
+            randomStatus={randomStatus}
+            randomError={randomError}
             continueInfo={continueInfo}
           />
         )}
@@ -511,7 +598,6 @@ export function App() {
             currentArticleId={rsvp.article?.id}
             feeds={feeds}
             isLoadingFeed={isLoadingFeed}
-            wpm={rsvp.wpm}
             onSelectArticle={handleContentBrowserSelectArticle}
             onRemoveArticle={handleRemoveArticle}
             onAddArticle={handleAddArticle}

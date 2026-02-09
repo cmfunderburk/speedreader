@@ -56,6 +56,7 @@ export interface Article {
   isRead: boolean;
   charCount?: number;
   wordCount?: number;
+  group?: string;
 }
 
 export interface PredictionResult {
