@@ -3,6 +3,7 @@ import type { Chunk, TokenMode, Article, SaccadePage, DisplayMode, PredictionSta
 import { tokenize } from '../lib/tokenizer';
 import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE, calculateSaccadeLineDuration } from '../lib/saccade';
 import { calculateDisplayTime, getEffectiveWpm } from '../lib/rsvp';
+import { mapChunkIndexByProgress } from '../lib/indexMapping';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
 import { isExactMatch, isWordKnown } from '../lib/levenshtein';
 import { usePlaybackTimer } from './usePlaybackTimer';
@@ -191,10 +192,10 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         article.content, displayMode, mode, saccadeLength, linesPerPageRef.current, article.assetBaseUrl
       );
       setSaccadePages(pages);
-      const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
-      const newIndex = Math.floor(progress * newChunks.length);
       setChunks(newChunks);
-      setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
+      setCurrentChunkIndex(
+        mapChunkIndexByProgress(currentChunkIndex, chunks.length, newChunks.length)
+      );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to saccadeLength changes
   }, [saccadeLength]);
@@ -365,14 +366,17 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       setSaccadePages(pages);
 
       // Try to preserve approximate position
-      const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
-      const newIndex = Math.floor(progress * newChunks.length);
       setChunks(newChunks);
-      setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
+      setCurrentChunkIndex(
+        mapChunkIndexByProgress(currentChunkIndex, chunks.length, newChunks.length)
+      );
     }
   }, [chunks.length, currentChunkIndex, retokenize]);
 
   const handleSetDisplayMode = useCallback((newDisplayMode: DisplayMode) => {
+    if (newDisplayMode === 'prediction' || newDisplayMode === 'recall' || newDisplayMode === 'training') {
+      pause();
+    }
     const prevDisplayMode = displayModeRef.current;
     displayModeRef.current = newDisplayMode;
     setDisplayModeState(newDisplayMode);
@@ -425,14 +429,14 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         });
       } else {
         // Entering RSVP/Saccade: use ratio-based mapping
-        const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
-        const newIndex = Math.floor(progress * newChunks.length);
-        setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
+        setCurrentChunkIndex(
+          mapChunkIndexByProgress(currentChunkIndex, chunks.length, newChunks.length)
+        );
       }
 
       setChunks(newChunks);
     }
-  }, [chunks.length, currentChunkIndex, retokenize]);
+  }, [chunks.length, currentChunkIndex, pause, retokenize]);
 
   const setCustomCharWidth = useCallback((width: number) => {
     setCustomCharWidthState(width);
@@ -452,10 +456,10 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       );
       setSaccadePages(pages);
 
-      const progress = chunks.length > 0 ? currentChunkIndex / chunks.length : 0;
-      const newIndex = Math.floor(progress * newChunks.length);
       setChunks(newChunks);
-      setCurrentChunkIndex(clampChunkIndex(newIndex, newChunks.length));
+      setCurrentChunkIndex(
+        mapChunkIndexByProgress(currentChunkIndex, chunks.length, newChunks.length)
+      );
     }
   }, [chunks.length, currentChunkIndex, retokenize]);
 

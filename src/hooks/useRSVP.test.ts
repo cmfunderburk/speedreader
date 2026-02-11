@@ -207,6 +207,23 @@ describe('useRSVP — play and pause', () => {
     expect(result.current.currentChunkIndex).toBe(1);
     expect(getStoredPosition(article.id)).toBe(1);
   });
+
+  it('does not auto-advance after switching to self-paced prediction mode', () => {
+    const article = makeArticle();
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'rsvp', initialWpm: 600 })
+    );
+
+    act(() => result.current.loadArticle(article));
+    act(() => result.current.play());
+    act(() => vi.advanceTimersByTime(100));
+
+    act(() => result.current.setDisplayMode('prediction'));
+    const indexAfterSwitch = result.current.currentChunkIndex;
+
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.currentChunkIndex).toBe(indexAfterSwitch);
+  });
 });
 
 describe('useRSVP — goToIndex', () => {
@@ -395,6 +412,23 @@ describe('useRSVP — advanceSelfPaced', () => {
 
     expect(result.current.currentChunkIndex).toBe(total); // capped at length
   });
+
+  it('persists completion index clamped to chunks.length in prediction mode', () => {
+    const article = makeArticle();
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'prediction' })
+    );
+
+    act(() => result.current.loadArticle(article, { displayMode: 'prediction' }));
+
+    const total = result.current.chunks.length;
+    for (let i = 0; i < total + 3; i++) {
+      act(() => result.current.advanceSelfPaced());
+    }
+    act(() => result.current.pause());
+
+    expect(getStoredPredictionPosition(article.id)).toBe(total);
+  });
 });
 
 describe('useRSVP — mode switch retokenization', () => {
@@ -482,5 +516,28 @@ describe('useRSVP — mode switch retokenization', () => {
     act(() => result.current.setDisplayMode('recall'));
 
     expect(result.current.currentChunkIndex).toBe(0);
+  });
+
+  it('survives rapid display-mode transitions without breaking index bounds', () => {
+    const article = makeArticle({ content: Array.from({ length: 220 }, (_, i) => `word${i}`).join(' ') });
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'rsvp', initialWpm: 700 })
+    );
+
+    act(() => result.current.loadArticle(article));
+    act(() => result.current.play());
+    act(() => vi.advanceTimersByTime(150));
+
+    act(() => {
+      result.current.setDisplayMode('saccade');
+      result.current.setDisplayMode('prediction');
+      result.current.setDisplayMode('rsvp');
+      result.current.setDisplayMode('prediction');
+      result.current.setDisplayMode('saccade');
+    });
+
+    expect(result.current.currentChunkIndex).toBeGreaterThanOrEqual(0);
+    expect(result.current.currentChunkIndex).toBeLessThanOrEqual(result.current.chunks.length);
+    expect(result.current.chunks.length).toBeGreaterThan(0);
   });
 });

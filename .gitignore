@@ -5,6 +5,7 @@ node_modules/
 dist/
 dist-electron/
 dist-electron-build/
+coverage/
 
 # Electron builder output
 release/

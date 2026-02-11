@@ -42,6 +42,7 @@ export function PredictionReader({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewStartIndex, setPreviewStartIndex] = useState(0);
+  const previewStartIndexRef = useRef(0);
   const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewTargetIndexRef = useRef<number | null>(null);
 
@@ -169,11 +170,11 @@ export function PredictionReader({
       previewTimerRef.current = null;
     }
     previewTargetIndexRef.current = null;
-    goToIndex(previewStartIndex);
+    goToIndex(previewStartIndexRef.current);
     setIsPreviewing(false);
     setInput('');
     setTimeout(() => inputRef.current?.focus(), 0);
-  }, [goToIndex, previewStartIndex]);
+  }, [goToIndex]);
 
   const createPreviewInterval = useCallback(() => {
     if (previewTimerRef.current) {
@@ -210,6 +211,7 @@ export function PredictionReader({
     } else {
       previewTargetIndexRef.current = null;
     }
+    previewStartIndexRef.current = currentChunkIndex;
     setPreviewStartIndex(currentChunkIndex);
     setPreviewIndex(currentChunkIndex);
     setIsPreviewing(true);
@@ -234,6 +236,9 @@ export function PredictionReader({
     setShowingMiss(false);
     setLastResult(null);
     setInput('');
+    previewStartIndexRef.current = 0;
+    setPreviewStartIndex(0);
+    setPreviewIndex(0);
     previewTargetIndexRef.current = null;
     goToIndex(0);
     onReset();

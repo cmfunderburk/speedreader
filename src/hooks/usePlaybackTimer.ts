@@ -15,6 +15,7 @@ export function usePlaybackTimer({
   onTick,
   minDelayFactor = 0.75,
 }: UsePlaybackTimerOptions) {
+  const effectiveMinDelayFactor = Math.max(0, Math.min(1, minDelayFactor))
   const [isPlaying, setIsPlaying] = useState(false)
   const timeoutRef = useRef<number | null>(null)
   const expectedTimeRef = useRef(0)
@@ -49,19 +50,23 @@ export function usePlaybackTimer({
         expectedTimeRef.current += duration
       }
 
-      const minDelay = duration * minDelayFactor
+      const minDelay = duration * effectiveMinDelayFactor
       const delay = Math.max(minDelay, expectedTimeRef.current - now)
 
       timeoutRef.current = window.setTimeout(() => {
         onTick()
       }, delay)
     },
-    [clearTimer, enabled, getDurationMs, isPlaying, minDelayFactor, onTick]
+    [clearTimer, enabled, getDurationMs, isPlaying, effectiveMinDelayFactor, onTick]
   )
 
   useEffect(() => {
     if (!isPlaying || !enabled) {
       clearTimer()
+      if (!enabled) {
+        // Re-enabled playback should schedule from "now", not stale expected time.
+        isFirstScheduleRef.current = true
+      }
       return
     }
 
