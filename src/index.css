@@ -1570,6 +1570,37 @@ button {
   color: #d4836e;
 }
 
+.library-settings-notice {
+  padding: 0.75rem 1rem;
+  background: rgba(122, 184, 122, 0.12);
+  border: 1px solid var(--success);
+  border-radius: 4px;
+  color: var(--success);
+}
+
+.library-settings-share-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.library-settings-share-actions button {
+  padding: 0.65rem 0.95rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.library-settings-share-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.library-settings-share-actions button:disabled {
+  opacity: 0.6;
+}
+
 .library-settings-add {
   display: flex;
   gap: 0.5rem;

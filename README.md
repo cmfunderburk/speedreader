@@ -1,153 +1,96 @@
 # Reader
 
-A reading training application. Load articles, books, and feeds, then practice with five modes designed to build different reading skills — from raw speed to deep comprehension and recall.
+Paced reading + recall training app with a Saccade-first workflow.
 
-## Reading Modes
+Last updated: February 2026.
+
+## What It Does
+Reader is designed around a tight loop:
+1. Read in Saccade mode.
+2. Capture a sentence/paragraph while paused.
+3. Practice on the captured passage (Recall or Prediction).
+4. Return to the exact reading context.
+
+The goal is to reduce context-switch friction between throughput reading and retention practice.
+
+## Core Modes
+
+### Saccade (default paced-reading entrypoint)
+- Full-page reading with sweep/focus pacer styles.
+- OVP/fixation guidance and configurable saccade length.
+- Figure/image rendering support, including paused click-to-zoom.
+- Page navigation controls and line-count controls.
+- Passage capture tools in the workspace.
 
 ### RSVP
-
-Rapid Serial Visual Presentation. Words or short phrases are displayed one at a time at the center of the screen, with the optimal recognition point (ORP) highlighted. This trains fast intake by eliminating eye movement overhead.
-
-- **Chunking**: single word or fixation-aligned custom spans using the saccade scoring model (shared saccade length slider, 7-15 chars). Custom chunks simulate what you'd see during a real fixation — boundaries land on content words, with short/function words absorbed into the nearest fixation
-- **Timing**: word mode uses per-word cadence with lexical multipliers; custom mode uses character-proportional timing (4.8 chars = 1 word) with per-occurrence punctuation pauses
-- Configurable WPM (100-800) with optional WPM ramp
-- **ORP highlight**: amber highlight on the optimal recognition point (toggle on/off)
-- **Alternate colors**: optional color-phase switching between consecutive chunks
-
-### Saccade
-
-Full-page reading with a continuous sweep pacer. Text is laid out in fixed-width lines (80 chars) across configurable pages. A smooth sweep bar animates across each line at your target WPM, training your eyes to move at a steady pace through natural text.
-
-- **Sweep pacer**: continuous character-based animation across each line, with duration proportional to line length
-- **OVP markers**: amber fixation points placed by a scored selection model that penalizes short words and function words, with configurable saccade length (7-15 chars)
-- **Sweep-synced ORP animation**: fixation markers decolor to plain text as the sweep passes, future lines dimmed
-- Independent toggles for pacer, OVP markers, and sweep bar
-- Preserves headings and paragraph structure
-- Configurable lines per page (5-30)
-- Manual page navigation when pacer is off
+- Word/custom chunk presentation with ORP highlighting.
+- Optional WPM ramp and alternate color phase.
+- Shared saccade-length tuning for custom chunking behavior.
 
 ### Prediction
-
-Next-word prediction training. You see the text accumulated so far and type what you think comes next. Known words advance instantly (flow state); misses pause and show the actual word with a loss meter.
-
-- First-letter hint for the current word
-- Binary scoring with typo tolerance — words within Damerau-Levenshtein distance ≤1 (≤2 for 8+ char words) count as known
-- Tab to preview ahead at your selected WPM, then resume predicting
-- Session stats: words attempted, known %, exact %
+- Next-word prediction with typo-tolerant scoring.
+- Tab preview supports either:
+  - next N sentences (default N=2), or
+  - unlimited preview until toggled off.
 
 ### Recall
-
-First-letter scaffold reconstruction. Each word shows only its first letter with the rest replaced by a dotted underline showing character positions. You type to reconstruct each word from memory and context.
-
-- Words validate as you type and advance automatically (typo-tolerant)
-- Known words appear in green, misses in red
-- Uses saccade page layout for stable line positioning
-- Session stats tracked the same as prediction mode
+- First-letter scaffold reconstruction with inline correctness coloring.
+- Same saccade layout anchoring for stable spatial memory.
 
 ### Training
+- Read -> Recall -> Feedback loop for article paragraphs and random drill corpora.
+- Random Drill uses adaptive tuning (WPM and length limits) and inline miss marking.
+- Per-paragraph history persists for article training.
 
-A structured read-recall-adjust loop that combines saccade reading with recall testing to train comprehension at increasing speeds.
+## Workflow Features
+- Passage Workspace in paced reading:
+  - `Save Sentence`
+  - `Save Paragraph`
+  - `Save Last 3`
+  - review queue with Recall/Predict/Hard/Easy/Done actions
+- Active exercise supports explicit `Return to Reading`.
+- Session continuity restores reading context after passage exercises.
+- Per-activity WPM persistence (paced-reading, active-recall, training) so speed tuning does not bleed across modes.
 
-1. **Setup** — A paragraph table of contents shows previews, word counts, and any previous scores. Select a starting paragraph and initial WPM.
-2. **Read** — The paragraph is displayed in saccade layout with a sweep pacer at your current WPM. A brief lead-in shows static ORP markers before the sweep begins.
-3. **Recall** — The same paragraph reappears as first-letter scaffolds. Type each word from memory; words auto-advance when known (typo-tolerant via Damerau-Levenshtein), with miss feedback for unknown words.
-4. **Feedback** — Shows your retention score (known words / total words). WPM adjusts automatically:
-   - Below 90%: WPM decreases by 25, paragraph repeats
-   - 90-94%: no change, advance to next paragraph
-   - 95%+: WPM increases by 15, advance to next paragraph
-5. **Complete** — Session summary: paragraphs completed, words recalled, average score, WPM progression, and repeat count.
+## Content Sources
+- URL import (Readability extraction).
+- Paste text.
+- RSS/Atom feeds.
+- Local library content in Electron (PDF/EPUB workflows).
+- Library sharing via `Export Manifest` / `Import Manifest` (manifest + shared source folders).
+- Wikipedia daily/random featured ingestion with reader-focused normalization.
 
-Per-paragraph training history (score, WPM, timestamp) persists across sessions.
+## Theme and Display
+- Theme: Dark / Light / System.
+- Mode-specific font sizing.
+- Prediction line width controls.
+- Ramp controls (curve, start %, rate/interval).
 
-## Adding Content
+## Keyboard (high-level)
+- `Space`: play/pause in playback modes.
+- `[` / `]`: adjust WPM for current activity.
+- `Esc`: back/exit depending on surface.
+- Prediction: `Tab` preview toggle.
+- Recall/training recall: `Enter`/`Space` submit or continue as context requires.
 
-**From a URL** — Click "+ Add" and paste an article link. The app extracts readable content automatically using Mozilla Readability.
-
-**Paste text** — In the same dialog, switch to the Paste Text tab and enter content directly.
-
-**Bookmarklet** — Drag the "Save to SpeedRead" button to your bookmarks bar. Click it on any article page to send the full HTML to Reader for Readability extraction. Works with paywalled content you're logged into.
-
-**RSS/Atom feeds** — Add feed URLs in the Feeds panel. Articles appear in the feed list; click to add them to your reading queue.
-
-**Local files (Electron only)** — Configure library directories in Library Settings. The app scans recursively for PDF and EPUB files.
-
-## Controls
-
-### Playback (RSVP / Saccade)
-
-| Key | Action |
-|-----|--------|
-| Space | Play / Pause |
-| Left Arrow | Previous chunk |
-| Right Arrow | Next chunk |
-| `[` | Decrease WPM by 10 |
-| `]` | Increase WPM by 10 |
-| Escape | Pause / exit current view |
-
-### Prediction Mode
-
-| Key | Action |
-|-----|--------|
-| Space / Enter | Submit prediction |
-| Tab | Toggle preview (when input focused or previewing) |
-| `` ` `` | Reset to beginning |
-
-### Recall Mode
-
-| Key | Action |
-|-----|--------|
-| Type | Fill in each word; auto-advances on correct input |
-| Space / Enter | Continue after incorrect word feedback |
-| `` ` `` | Reset to beginning |
-
-### Training Mode
-
-| Key | Action |
-|-----|--------|
-| Space / Enter | Continue from feedback screen |
-| Space / Enter | Continue after miss (during recall phase) |
-| Pause / Exit buttons | Toggle pause or return to paragraph list |
-
-## Settings
-
-Click the gear icon in the header to configure:
-
-- **Font sizes** for RSVP, saccade, and prediction modes (independent sliders)
-- **Prediction line width** — narrow (50ch), medium (65ch), or wide (85ch)
-- **WPM ramp** — gradually increase speed during a session
-  - **Curve**: linear (fixed rate per interval) or logarithmic (asymptotic half-life)
-  - **Start**: 10-90% of target WPM
-  - **Rate/interval** (linear) or **half-life** (logarithmic)
-  - Visual graph showing the ramp progression
-
-Reader controls at the bottom of the main view provide:
-
-- **WPM slider** (100-800) with optional ramp toggle
-- **Display mode** selector (RSVP / Saccade / Prediction / Recall / Training)
-- **Chunking mode** selector (Word / Custom) for RSVP
-- **ORP** and **alternate colors** toggles for RSVP
-- **Pacer**, **OVP**, and **sweep** toggles for saccade mode
-- **Saccade length** slider (7-15 chars) — shared between RSVP custom mode and saccade mode, controls fixation spacing
-- **Lines per page** for saccade and recall modes
-
-## Running
+## Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Web version (localhost:5173)
 npm run dev
-
-# Electron version (adds local PDF/EPUB support)
 npm run electron:dev
-
-# Run tests
-npm test
-
-# Production build (web)
+npm run lint
+npm run test:run
 npm run build
+```
 
-# Production build (Electron distributable)
+## Electron Build
+
+```bash
 npm run electron:build
 ```
+
+## Docs
+- Product roadmap: `docs/brainstorming/saccade-entrypoint-product-roadmap.md`
+- Theme notes: `docs/brainstorming/theme-token-map.md`
+- Ops/runbook: `docs/operational-runbook.md`

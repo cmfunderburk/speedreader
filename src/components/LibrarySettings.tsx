@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { LibrarySource } from '../types/electron';
+import type { LibrarySource, LibraryImportResult } from '../types/electron';
 
 interface LibrarySettingsProps {
   onClose: () => void;
@@ -9,19 +9,26 @@ export function LibrarySettings({ onClose }: LibrarySettingsProps) {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [newName, setNewName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [isSharingAction, setIsSharingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const refreshSources = useCallback(async () => {
+    if (!window.library) return;
+    const next = await window.library.getSources();
+    setSources(next);
+  }, []);
 
   // Load sources on mount
   useEffect(() => {
-    if (!window.library) return;
-
-    window.library.getSources().then(setSources);
-  }, []);
+    refreshSources();
+  }, [refreshSources]);
 
   const handleAddSource = useCallback(async () => {
     if (!window.library) return;
 
     setError(null);
+    setNotice(null);
 
     try {
       const dirPath = await window.library.selectDirectory();
@@ -64,6 +71,58 @@ export function LibrarySettings({ onClose }: LibrarySettingsProps) {
     []
   );
 
+  const handleExportManifest = useCallback(async () => {
+    if (!window.library) return;
+
+    setError(null);
+    setNotice(null);
+    setIsSharingAction(true);
+
+    try {
+      const result = await window.library.exportManifest();
+      if (result.status === 'cancelled') return;
+
+      setNotice(
+        `Manifest exported to ${result.path} (${result.sourceCount} sources, ${result.entryCount} entries).`
+      );
+    } catch (err) {
+      setError(`Failed to export manifest: ${(err as Error).message}`);
+    } finally {
+      setIsSharingAction(false);
+    }
+  }, []);
+
+  const summarizeImportResult = (result: LibraryImportResult): string => {
+    if (result.status !== 'imported') {
+      return 'Import cancelled.';
+    }
+
+    const added = result.added ?? 0;
+    const existing = result.existing ?? 0;
+    const missing = result.missing ?? 0;
+    return `Import complete: ${added} added, ${existing} already configured, ${missing} missing.`;
+  };
+
+  const handleImportManifest = useCallback(async () => {
+    if (!window.library) return;
+
+    setError(null);
+    setNotice(null);
+    setIsSharingAction(true);
+
+    try {
+      const result = await window.library.importManifest();
+      if (result.status === 'cancelled') return;
+
+      await refreshSources();
+      setNotice(summarizeImportResult(result));
+    } catch (err) {
+      setError(`Failed to import manifest: ${(err as Error).message}`);
+    } finally {
+      setIsSharingAction(false);
+    }
+  }, [refreshSources]);
+
   if (!window.library) {
     return null;
   }
@@ -79,10 +138,21 @@ export function LibrarySettings({ onClose }: LibrarySettingsProps) {
 
       <div className="library-settings-content">
         <p className="library-settings-description">
-          Add directories containing PDF and EPUB files to your library.
+          Add directories containing PDF, EPUB, and TXT files to your library.
+          TXT files are treated as normalized text snapshots when available.
         </p>
 
         {error && <div className="library-settings-error">{error}</div>}
+        {notice && <div className="library-settings-notice">{notice}</div>}
+
+        <div className="library-settings-share-actions">
+          <button onClick={handleExportManifest} disabled={isSharingAction || isAdding || sources.length === 0}>
+            {isSharingAction ? 'Working...' : 'Export Manifest'}
+          </button>
+          <button onClick={handleImportManifest} disabled={isSharingAction || isAdding}>
+            {isSharingAction ? 'Working...' : 'Import Manifest'}
+          </button>
+        </div>
 
         <div className="library-settings-add">
           <input

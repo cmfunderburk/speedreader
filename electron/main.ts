@@ -2,7 +2,17 @@ import { app, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { getConfiguredSources, scanDirectory, addSource, removeSource, loadSources, saveSources, LibrarySource } from './lib/library'
+import {
+  getConfiguredSources,
+  scanDirectory,
+  addSource,
+  removeSource,
+  buildLibraryManifest,
+  saveLibraryManifest,
+  loadLibraryManifest,
+  importLibraryManifest,
+  LibrarySource,
+} from './lib/library'
 import { extractPdfText } from './lib/pdf'
 import { extractEpubText } from './lib/epub'
 
@@ -183,18 +193,6 @@ app.whenReady().then(() => {
     }
   })
 
-  // Initialize default library sources on first run, or reset if all paths are stale
-  const sources = loadSources()
-  const libraryRoot = getResourcePath('library')
-  const needsReset = sources.length === 0 ||
-    sources.every(s => !fs.existsSync(s.path))
-  if (needsReset) {
-    const defaultSources: LibrarySource[] = [
-      { name: 'Classics', path: path.join(libraryRoot, 'classics') },
-    ]
-    saveSources(defaultSources)
-  }
-
   createWindow()
 
   app.on('activate', () => {
@@ -281,6 +279,74 @@ ipcMain.handle('library:selectDirectory', async () => {
   }
 
   return result.filePaths[0]
+})
+
+ipcMain.handle('library:exportManifest', async () => {
+  if (!mainWindow) {
+    throw new Error('Main window is not available')
+  }
+
+  const sources = getConfiguredSources()
+  if (sources.length === 0) {
+    throw new Error('No library sources configured')
+  }
+
+  const suggestedDir = app.getPath('documents')
+  const suggestedName = `reader-library-manifest-${new Date().toISOString().slice(0, 10)}.json`
+  const saveResult = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Library Manifest',
+    defaultPath: path.join(suggestedDir, suggestedName),
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { status: 'cancelled' as const }
+  }
+
+  const manifest = await buildLibraryManifest()
+  saveLibraryManifest(manifest, saveResult.filePath)
+
+  return {
+    status: 'exported' as const,
+    path: saveResult.filePath,
+    sourceCount: manifest.sources.length,
+    entryCount: manifest.entries.length,
+  }
+})
+
+ipcMain.handle('library:importManifest', async () => {
+  if (!mainWindow) {
+    throw new Error('Main window is not available')
+  }
+
+  const manifestPick = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Library Manifest',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+  if (manifestPick.canceled || manifestPick.filePaths.length === 0) {
+    return { status: 'cancelled' as const }
+  }
+
+  const sharedRootPick = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Shared Library Root Folder',
+    properties: ['openDirectory'],
+  })
+  if (sharedRootPick.canceled || sharedRootPick.filePaths.length === 0) {
+    return { status: 'cancelled' as const }
+  }
+
+  const manifestPath = manifestPick.filePaths[0]
+  const sharedRootPath = sharedRootPick.filePaths[0]
+  const manifest = loadLibraryManifest(manifestPath)
+  const summary = importLibraryManifest(manifest, sharedRootPath)
+
+  return {
+    status: 'imported' as const,
+    manifestPath,
+    sharedRootPath,
+    ...summary,
+  }
 })
 
 // Corpus IPC handlers

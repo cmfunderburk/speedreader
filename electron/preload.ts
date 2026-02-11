@@ -22,6 +22,30 @@ export interface ExtractedContent {
   chapters?: Array<{ title: string; content: string }>
 }
 
+export interface LibraryExportResult {
+  status: 'cancelled' | 'exported'
+  path?: string
+  sourceCount?: number
+  entryCount?: number
+}
+
+export interface LibraryImportSourceResult {
+  sourceName: string
+  status: 'added' | 'existing' | 'missing'
+  resolvedPath?: string
+  message: string
+}
+
+export interface LibraryImportResult {
+  status: 'cancelled' | 'imported'
+  manifestPath?: string
+  sharedRootPath?: string
+  added?: number
+  existing?: number
+  missing?: number
+  results?: LibraryImportSourceResult[]
+}
+
 contextBridge.exposeInMainWorld('corpus', {
   getInfo: (): Promise<Record<string, { available: boolean; totalArticles: number }>> =>
     ipcRenderer.invoke('corpus:getInfo'),
@@ -48,4 +72,10 @@ contextBridge.exposeInMainWorld('library', {
 
   selectDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke('library:selectDirectory'),
+
+  exportManifest: (): Promise<LibraryExportResult> =>
+    ipcRenderer.invoke('library:exportManifest'),
+
+  importManifest: (): Promise<LibraryImportResult> =>
+    ipcRenderer.invoke('library:importManifest'),
 })

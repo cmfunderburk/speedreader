@@ -45,6 +45,8 @@ describe('Library', () => {
       addSource: vi.fn(),
       removeSource: vi.fn(),
       selectDirectory: vi.fn(),
+      exportManifest: vi.fn(),
+      importManifest: vi.fn(),
     };
 
     render(<Library onAdd={vi.fn()} onOpenSettings={vi.fn()} />);

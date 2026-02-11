@@ -22,6 +22,30 @@ export interface ExtractedContent {
   chapters?: Array<{ title: string; content: string }>
 }
 
+export interface LibraryExportResult {
+  status: 'cancelled' | 'exported'
+  path?: string
+  sourceCount?: number
+  entryCount?: number
+}
+
+export interface LibraryImportSourceResult {
+  sourceName: string
+  status: 'added' | 'existing' | 'missing'
+  resolvedPath?: string
+  message: string
+}
+
+export interface LibraryImportResult {
+  status: 'cancelled' | 'imported'
+  manifestPath?: string
+  sharedRootPath?: string
+  added?: number
+  existing?: number
+  missing?: number
+  results?: LibraryImportSourceResult[]
+}
+
 export interface LibraryAPI {
   getSources(): Promise<LibrarySource[]>
   listBooks(dirPath: string): Promise<LibraryItem[]>
@@ -29,6 +53,8 @@ export interface LibraryAPI {
   addSource(source: LibrarySource): Promise<void>
   removeSource(sourcePath: string): Promise<void>
   selectDirectory(): Promise<string | null>
+  exportManifest(): Promise<LibraryExportResult>
+  importManifest(): Promise<LibraryImportResult>
 }
 
 export interface CorpusArticle {
