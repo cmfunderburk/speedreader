@@ -54,12 +54,11 @@ import type {
   PassageCaptureKind,
   PassageReviewMode,
   PassageReviewState,
-  SessionSnapshot,
   ThemePreference,
 } from '../types';
 import { PREDICTION_LINE_WIDTHS } from '../types';
 import { measureTextMetrics } from '../lib/textMetrics';
-import { formatBookName } from './Library';
+import { formatBookName } from '../lib/libraryFormatting';
 import { isSentenceBoundaryChunk } from '../lib/predictionPreview';
 import { appViewStateReducer, getInitialViewState, viewStateToAction } from '../lib/appViewState';
 import {
@@ -69,13 +68,19 @@ import {
   planStartReadingFromPreview,
 } from '../lib/sessionTransitions';
 import {
+  getHeaderBackAction,
   getActiveWpmActivity,
   getHeaderTitle,
   isActiveView,
   planContentBrowserArticleSelection,
+  resolveContinueSessionInfo,
+  shouldShowBackButton,
 } from '../lib/appViewSelectors';
 import type { ViewState } from '../lib/appViewState';
-import { upsertArticleByUrl } from '../lib/articleUpsert';
+import { planEscapeAction } from '../lib/appKeyboard';
+import { buildPassageReviewLaunchPlan } from '../lib/passageReviewLaunch';
+import { prepareFeaturedArticleUpsert, resolveDailyFeaturedArticle } from '../lib/featuredArticleLaunch';
+import { buildPassageReviewQueue } from '../lib/passageQueue';
 
 const PASSAGE_CAPTURE_LAST_LINE_COUNT = 3;
 const MIN_WPM = 100;
@@ -85,16 +90,6 @@ function clipPassagePreview(text: string, maxChars: number = 180): string {
   const normalized = text.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxChars) return normalized;
   return `${normalized.slice(0, maxChars - 1)}...`;
-}
-
-function passageStatePriority(state: PassageReviewState): number {
-  switch (state) {
-    case 'hard': return 0;
-    case 'new': return 1;
-    case 'easy': return 2;
-    case 'done': return 3;
-    default: return 4;
-  }
 }
 
 function resolveThemePreference(themePreference: ThemePreference, systemTheme: 'dark' | 'light'): 'dark' | 'light' {
@@ -326,13 +321,10 @@ export function App() {
       ? () => setActivityWpm(activeWpmActivity, rsvp.wpm + 10)
       : undefined,
     onEscape: () => {
-      if (viewState.screen === 'home') return;
-      if (viewState.screen === 'active-exercise') {
+      const escapeAction = planEscapeAction(viewState);
+      if (escapeAction === 'close-active-exercise') {
         closeActiveExercise();
-      } else if (activeView) {
-        goHome();
-      } else if (viewState.screen === 'content-browser' || viewState.screen === 'preview' ||
-                 viewState.screen === 'settings' || viewState.screen === 'library-settings' || viewState.screen === 'add') {
+      } else if (escapeAction === 'go-home') {
         goHome();
       }
     },
@@ -707,13 +699,7 @@ export function App() {
   }, [capturePassageFromLines, currentSaccadeCaptureContext, flatSaccadeLines]);
 
   const reviewQueue = useMemo(() => {
-    return passages
-      .filter((passage) => passage.reviewState !== 'done')
-      .sort((a, b) => {
-        const byState = passageStatePriority(a.reviewState) - passageStatePriority(b.reviewState);
-        if (byState !== 0) return byState;
-        return b.updatedAt - a.updatedAt;
-      });
+    return buildPassageReviewQueue(passages);
   }, [passages]);
 
   useEffect(() => {
@@ -738,37 +724,21 @@ export function App() {
   }, [refreshPassagesFromStorage]);
 
   const startPassageReview = useCallback((passage: Passage, mode: PassageReviewMode) => {
-    const readingSnapshot = rsvp.article ? {
+    const sourceArticle = articles.find((article) => article.id === passage.articleId);
+    const currentReading = rsvp.article ? {
       articleId: rsvp.article.id,
       chunkIndex: rsvp.currentChunkIndex,
       displayMode: rsvp.displayMode,
     } : undefined;
-    const snapshot: SessionSnapshot = {
-      reading: readingSnapshot,
-      training: {
-        passageId: passage.id,
-        mode,
-        startedAt: Date.now(),
-      },
-      lastTransition: mode === 'recall' ? 'read-to-recall' : 'read-to-prediction',
-      updatedAt: Date.now(),
-    };
-    saveSessionSnapshot(snapshot);
+    const launchPlan = buildPassageReviewLaunchPlan({
+      passage,
+      mode,
+      now: Date.now(),
+      currentReading,
+      sourceArticle,
+    });
 
-    const sourceArticle = articles.find((article) => article.id === passage.articleId);
-    const passageMetrics = measureTextMetrics(passage.text);
-    const passageArticle: Article = {
-      id: `passage-${passage.id}`,
-      title: `Passage: ${passage.articleTitle}`,
-      content: passage.text,
-      source: `Passage Review • ${sourceArticle?.source || 'Saved passage'}`,
-      sourcePath: sourceArticle?.sourcePath,
-      assetBaseUrl: sourceArticle?.assetBaseUrl,
-      addedAt: Date.now(),
-      readPosition: 0,
-      isRead: false,
-      ...passageMetrics,
-    };
+    saveSessionSnapshot(launchPlan.snapshot);
 
     touchPassageReview(passage.id, mode);
     setActivePassageId(passage.id);
@@ -777,7 +747,7 @@ export function App() {
     syncWpmForActivity('active-recall');
 
     rsvp.pause();
-    rsvp.loadArticle(passageArticle, { displayMode: mode === 'recall' ? 'recall' : 'prediction' });
+    rsvp.loadArticle(launchPlan.article, { displayMode: launchPlan.displayMode });
     setViewState({ screen: 'active-exercise' });
   }, [articles, refreshPassagesFromStorage, rsvp, setViewState, syncWpmForActivity]);
 
@@ -824,26 +794,20 @@ export function App() {
     const today = getTodayUTC();
 
     // Check if we already fetched today's article
-    const daily = loadDailyInfo();
-    if (daily && daily.date === today) {
-      const existing = articles.find(a => a.id === daily.articleId);
-      if (existing) {
-        applySessionLaunchPlan(planFeaturedArticleLaunch(existing));
-        return;
-      }
+    const cachedDaily = resolveDailyFeaturedArticle(today, loadDailyInfo(), articles);
+    if (cachedDaily) {
+      applySessionLaunchPlan(planFeaturedArticleLaunch(cachedDaily));
+      return;
     }
 
     setDailyStatus('loading');
     setDailyError(null);
     try {
       const { title, content, url } = await fetchDailyArticle();
-      const upserted = upsertArticleByUrl({
+      const upserted = prepareFeaturedArticleUpsert({
         existingArticles: articles,
-        title,
-        content,
-        url,
+        payload: { title, content, url },
         source: 'Wikipedia Daily',
-        group: 'Wikipedia',
         now: Date.now(),
         generateId,
       });
@@ -867,13 +831,10 @@ export function App() {
     setRandomError(null);
     try {
       const { title, content, url } = await fetchRandomFeaturedArticle();
-      const upserted = upsertArticleByUrl({
+      const upserted = prepareFeaturedArticleUpsert({
         existingArticles: articles,
-        title,
-        content,
-        url,
+        payload: { title, content, url },
         source: 'Wikipedia Featured',
-        group: 'Wikipedia',
         now: Date.now(),
         generateId,
       });
@@ -910,11 +871,7 @@ export function App() {
 
   // Continue from home screen
   const continueInfo = useMemo(() => {
-    const session = settings.lastSession;
-    if (!session) return null;
-    const article = articles.find(a => a.id === session.articleId);
-    if (!article) return null;
-    return { article, activity: session.activity, displayMode: session.displayMode };
+    return resolveContinueSessionInfo(settings.lastSession, articles);
   }, [settings.lastSession, articles]);
 
   const handleContinue = useCallback((info: { article: Article; activity: Activity; displayMode: DisplayMode }) => {
@@ -941,8 +898,8 @@ export function App() {
   // Header title based on view
   const headerTitle = getHeaderTitle(viewState);
 
-  const showBackButton = viewState.screen !== 'home';
-  const headerBackAction = viewState.screen === 'active-exercise' ? closeActiveExercise : goHome;
+  const showBackButton = shouldShowBackButton(viewState);
+  const headerBackAction = getHeaderBackAction(viewState);
   const appMainClassName = viewState.screen === 'active-reader' ? 'app-main app-main-active-reader' : 'app-main';
 
   // --- Render helpers ---
@@ -1133,7 +1090,12 @@ export function App() {
       <header className="app-header">
         <div className="app-header-left">
           {showBackButton && (
-            <button className="control-btn app-back-btn" onClick={headerBackAction}>Home</button>
+            <button
+              className="control-btn app-back-btn"
+              onClick={headerBackAction === 'close-active-exercise' ? closeActiveExercise : goHome}
+            >
+              Home
+            </button>
           )}
           <h1>{headerTitle}</h1>
         </div>

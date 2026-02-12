@@ -78,6 +78,7 @@ npm run electron:dev
 npm run typecheck
 npm run lint
 npm run test:run
+npm run verify
 npm run build
 ```
 
@@ -89,6 +90,7 @@ npm run electron:build
 
 ## Quality Gates
 Run these before commit/PR:
+- `npm run verify`
 - `npm run typecheck`
 - `npm run lint`
 - `npm run test:run`

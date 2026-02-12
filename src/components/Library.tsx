@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { LibrarySource, LibraryItem } from '../types/electron';
 import type { Article } from '../types';
+import { formatBookName } from '../lib/libraryFormatting';
 
 interface LibraryProps {
   onAdd: (article: Omit<Article, 'id' | 'addedAt' | 'readPosition' | 'isRead'>) => void;
@@ -13,14 +14,6 @@ interface BookGroup {
   totalSize: number;
   frontmatterCount: number;
 }
-
-// Format book name for display (convert kebab-case to title case)
-export const formatBookName = (name: string): string => {
-  return name
-    .split(/[-_]/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-};
 
 export function Library({ onAdd, onOpenSettings }: LibraryProps) {
   const [sources, setSources] = useState<LibrarySource[]>([]);

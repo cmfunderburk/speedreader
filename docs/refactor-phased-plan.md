@@ -34,6 +34,15 @@ Exit criteria:
 - [x] Extract close-active-exercise transition planning into pure transition logic.
 - [x] Extract launch/continue session planning (`preview`, `continue`, `daily/random`) into pure transition logic.
 - [x] Extract `TrainingReader` continue/start phase planning into pure state logic.
+- [x] Extract `TrainingReader` reading sweep and scaffold recall transition planning into pure state logic.
+- [x] Extract `TrainingReader` scoring/finalization math into pure helpers with tests.
+- [x] Extract `TrainingReader` recall token scoring and preview-key derivation into pure helpers with tests.
+- [x] Extract `TrainingReader` give-up remaining-miss scoring into pure helper logic.
+- [x] Extract `App` escape-key navigation planning into pure helper logic.
+- [x] Extract `App` passage-review launch/session planning into pure helper logic.
+- [x] Extract `App` featured daily/random launch cache+upsert flow into shared helper logic.
+- [x] Extract `App` passage-review queue ordering logic into pure helper logic.
+- [x] Extract `App` continue-session and header back-action selectors into pure helper logic.
 - [ ] Continue extracting remaining `App` navigation/session transitions from component callbacks.
 - [ ] Continue extracting remaining `TrainingReader` phase transitions into pure state logic.
 - Keep rendering components focused on view concerns.
@@ -46,6 +55,7 @@ Exit criteria:
 - Evaluate moving large payload storage from `localStorage` to IndexedDB/SQLite.
 - Add coverage thresholds for `components` and critical state modules.
 - Standardize CI checks to include web + Electron type checks.
+- Add a single local gate command (`npm run verify`) to run lint + tests + build consistently.
 
 Exit criteria:
 - Storage strategy documented and implemented for large-content paths.

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   getActiveWpmActivity,
+  getHeaderBackAction,
   getHeaderTitle,
   isActiveView,
   planContentBrowserArticleSelection,
+  resolveContinueSessionInfo,
+  shouldShowBackButton,
 } from './appViewSelectors';
 import type { Article } from '../types';
 
@@ -54,5 +57,32 @@ describe('appViewSelectors', () => {
       activity: 'paced-reading',
       article,
     });
+  });
+
+  it('resolves continue-session info from last session and article set', () => {
+    const a1 = makeArticle('a1');
+    const a2 = makeArticle('a2');
+    expect(resolveContinueSessionInfo(
+      { articleId: 'a2', activity: 'active-recall', displayMode: 'prediction' },
+      [a1, a2]
+    )).toEqual({
+      article: a2,
+      activity: 'active-recall',
+      displayMode: 'prediction',
+    });
+
+    expect(resolveContinueSessionInfo(
+      { articleId: 'missing', activity: 'paced-reading', displayMode: 'saccade' },
+      [a1]
+    )).toBeNull();
+    expect(resolveContinueSessionInfo(undefined, [a1])).toBeNull();
+  });
+
+  it('computes header back visibility and action', () => {
+    expect(shouldShowBackButton({ screen: 'home' })).toBe(false);
+    expect(shouldShowBackButton({ screen: 'settings' })).toBe(true);
+
+    expect(getHeaderBackAction({ screen: 'active-exercise' })).toBe('close-active-exercise');
+    expect(getHeaderBackAction({ screen: 'active-reader' })).toBe('go-home');
   });
 });

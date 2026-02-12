@@ -20,6 +20,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:watch": "vitest --coverage",
+    "verify": "npm run lint && npm run test:run && npm run build",
     "electron:dev": "ELECTRON=true vite",
     "electron:build": "npm run typecheck:electron && ELECTRON=true vite build && electron-builder",
     "electron:preview": "electron dist-electron/main.js"
