@@ -33,7 +33,7 @@ jobs:
           else
             BASE=${{ github.event.before }}
           fi
-          if git diff --name-only "$BASE" HEAD | grep -q '^electron/'; then
+          if git diff --name-only "$BASE" HEAD | grep -Eq '^(electron/|shared/|src/types/electron\.d\.ts|tsconfig\.electron\.json|package\.json|package-lock\.json|vite\.config\.ts$)'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
