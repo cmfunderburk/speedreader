@@ -1,68 +1,71 @@
 # Reader — Project Context
 
-Reading training app with four display modes (RSVP, saccade, prediction, recall). React 18 + TypeScript + Vite, with optional Electron for local PDF/EPUB support.
+Reading and training app with three top-level activities:
+- `paced-reading` (RSVP/saccade reading surface)
+- `active-recall` (prediction/recall on passages)
+- `training` (article paragraph loop + random drill)
+
+Stack: React 18 + TypeScript + Vite, with optional Electron for local PDF/EPUB support.
 
 ## Architecture
 
 ```
 src/
-  components/     18 React components (App, Reader, SaccadeReader,
-                  PredictionReader, RecallReader, ReaderControls, etc.)
-  hooks/          useRSVP (main orchestrator), usePlaybackTimer,
-                  useKeyboard
-  lib/            tokenizer, saccade, rsvp (timing), levenshtein,
-                  textMetrics, extractor, feeds, storage
-  types/          index.ts — all shared types
+  components/     App shell + reading/exercise/training surfaces
+  hooks/          useRSVP (core orchestrator), usePlaybackTimer, useKeyboard
+  lib/            tokenizer, saccade, rsvp timing, levenshtein, extractor,
+                  feeds, wikipedia, storage, trainingDrill
+  types/          shared app/electron types
 electron/         main.ts, preload.ts, lib/ (pdf, epub, library, cleanup)
 ```
 
-### Data flow
+## Main Data Flow
 
-1. Content enters via URL extraction, pasted text, RSS feeds, or Electron file loading
-2. `useRSVP` tokenizes content into `Chunk[]` based on display mode and token mode
-3. For RSVP: `usePlaybackTimer` drives auto-advance with timing from `calculateDisplayTime`
-4. For saccade: same timer drives a sweep animation across page lines
-5. For prediction/recall: self-paced via `advanceSelfPaced` (allows index to reach `chunks.length` for completion)
-6. Reading position persists to localStorage per article
+1. Content enters via URL extraction, pasted text, RSS feeds, or Electron file loading.
+2. `useRSVP` tokenizes content into `Chunk[]` based on display mode and token mode.
+3. Playback modes (RSVP/saccade) advance via `usePlaybackTimer` and mode-specific timing.
+4. Prediction/Recall are self-paced and update scoring state per chunk.
+5. Training manages a read -> recall -> feedback state machine in `TrainingReader`.
+6. Local storage persists articles, settings, WPM by activity, training history, passages, and drill state.
 
-### Key types
+## Training/Drill Invariants
 
-- `DisplayMode`: `'rsvp' | 'saccade' | 'prediction' | 'recall'`
-- `TokenMode`: `'word' | 'phrase' | 'clause' | 'custom'` (chunking granularity)
-- `Chunk`: `{ text, wordCount, orpIndex, saccade? }` — the atomic display unit
-- `Article`: content + metadata + reading position + optional cached charCount/wordCount
+- Random Drill rounds are exactly one sentence (`getDrillRound`).
+- Auto-adjust drill difficulty is bounded WPM-only:
+  - user picks min/max WPM,
+  - adjustments are fixed `+/-10` WPM (`DRILL_WPM_STEP`),
+  - no hidden sentence-length or char-limit adaptation.
+- In no-scaffold Random Drill recall:
+  - `Tab` triggers timed preview of remaining words at current WPM,
+  - preview then hides,
+  - previewed words are forfeited (practice allowed, score stays zero for those words).
+- Detail words (names/dates) may be included or excluded from score via toggle.
 
-## Important patterns
+## Important Patterns
 
-**State/ref split in useRSVP**: State drives renders; refs (chunksRef, wpmRef, etc.) are synced via useEffect so timer callbacks read current values without recreating the timer. The `advanceToNextRef` indirection breaks a circular dependency between the timer and the advance function.
+- **State/ref split in `useRSVP`**:
+  state drives renders; refs keep timer callbacks in sync without recreating timers.
+- **`goToIndex` vs `advanceSelfPaced`**:
+  `advanceSelfPaced` can reach completion boundary (`chunks.length`) for end-state transitions.
+- **Mode-dependent tokenization**:
+  switching display modes retokenizes and remaps position proportionally.
+- **Storage migration discipline**:
+  when adding/changing persisted fields, keep backward compatibility in loaders and add tests.
 
-**`goToIndex` vs `advanceSelfPaced`**: `goToIndex` clamps to `chunks.length - 1`. `advanceSelfPaced` allows `chunks.length` (one past end) to trigger the completion view in prediction/recall modes. This asymmetry is intentional.
-
-**Tokenization is mode-dependent**: Switching display mode retokenizes the full article. RSVP/saccade use the selected token mode; prediction always uses `'word'`; recall uses `tokenizeRecall`. Position is mapped proportionally when switching between modes.
-
-**Preview timer in PredictionReader**: Uses `setInterval` (not the drift-corrected `usePlaybackTimer`). The effect at the bottom of the component manages creation/cleanup; `startPreview` sets state and lets the effect handle interval creation to avoid double-create.
-
-## Build & test
+## Build & Test
 
 ```bash
-npm run dev          # Vite dev server (web only)
-npm run electron:dev # Electron with hot reload
-npm run build        # Production web build
-npm run test         # Vitest (jsdom environment)
+npm run dev
+npm run electron:dev
+npm run lint
+npm run test:run
+npm run build
+npm run electron:build  # when electron/** changes
 ```
-
-Vite config conditionally loads Electron plugins when `ELECTRON=true` or mode is `electron`.
 
 ## Conventions
 
-- Python package manager: `uv` (use `uv pip install`, `uv run`, etc.)
-- All state persisted to localStorage (articles, feeds, settings, reading positions)
-- Monospace font stack throughout (JetBrains Mono, Fira Code, SF Mono, etc.)
-- Dark theme via CSS custom properties (--bg-primary, --accent, etc.)
-- No external state management — React state + localStorage only
-- Scoring uses normalized Levenshtein distance (0 = perfect, 1 = total miss), case-insensitive and punctuation-stripped
-- Tests use Vitest + Testing Library; test files colocated with source
-
-## Direction
-
-The project is evolving toward a deep reading training tool, informed by frameworks like Adler & Van Doren's *How to Read a Book* (included in the library). Current modes cover speed (RSVP, saccade) and active engagement (prediction, recall). Future features may expand along these lines.
+- Persistence is localStorage-based (plus Electron local library files where applicable).
+- No global state framework; React state + hooks.
+- Scoring logic relies on typo-tolerant matching (`levenshtein` helpers).
+- Tests use Vitest + Testing Library and should cover regressions in playback, mode switching, storage, and training.

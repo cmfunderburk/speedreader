@@ -1,77 +1,73 @@
 # Reader
 
-Paced reading + recall training app with a Saccade-first workflow.
+Paced reading and recall training app, with a saccade-first workflow and integrated practice loops.
 
 Last updated: February 2026.
 
-## What It Does
-Reader is designed around a tight loop:
-1. Read in Saccade mode.
-2. Capture a sentence/paragraph while paused.
-3. Practice on the captured passage (Recall or Prediction).
-4. Return to the exact reading context.
+## Product Scope
+Reader currently supports three connected workflows:
+1. **Paced Reading** (`Saccade` and `RSVP`) for throughput and focus.
+2. **Active Exercise** (`Prediction` and `Recall`) on saved passages.
+3. **Training** (`Article` and `Random Drill`) for repeated read-recall-feedback practice.
 
-The goal is to reduce context-switch friction between throughput reading and retention practice.
+The design goal is to reduce friction between reading and retention practice by keeping context, pacing, and controls consistent across workflows.
 
 ## Core Modes
 
-### Saccade (default paced-reading entrypoint)
+### Saccade
 - Full-page reading with sweep/focus pacer styles.
 - OVP/fixation guidance and configurable saccade length.
-- Figure/image rendering support, including paused click-to-zoom.
-- Page navigation controls and line-count controls.
-- Passage capture tools in the workspace.
+- Figure/image support, including paused click-to-zoom.
+- Passage capture actions from the same reading surface.
 
 ### RSVP
 - Word/custom chunk presentation with ORP highlighting.
 - Optional WPM ramp and alternate color phase.
-- Shared saccade-length tuning for custom chunking behavior.
+- Shared pacing controls with other modes.
 
 ### Prediction
 - Next-word prediction with typo-tolerant scoring.
-- Tab preview supports either:
-  - next N sentences (default N=2), or
-  - unlimited preview until toggled off.
+- `Tab` preview supports either next `N` sentences or continuous preview (configurable in Settings).
 
 ### Recall
-- First-letter scaffold reconstruction with inline correctness coloring.
-- Same saccade layout anchoring for stable spatial memory.
+- Word reconstruction anchored to the same saccade layout.
+- Optional first-letter scaffold.
+- Inline correctness marking.
 
 ### Training
-- Read -> Recall -> Feedback loop for article paragraphs and random drill corpora.
-- Random Drill uses adaptive tuning (WPM and length limits) and inline miss marking.
-- Per-paragraph history persists for article training.
+- Read -> Recall -> Feedback loop for:
+  - selected article paragraphs, or
+  - random drill corpora.
+- Random Drill supports two corpus families (`Wikipedia`, `Prose`) with readability tiers (`Easy`, `Medium`, `Hard`).
+- Drill rounds are one sentence.
+- Optional auto-adjust difficulty uses a user-selected WPM range and fixed `+/-10` WPM steps.
+- In Random Drill with scaffold off, `Tab` previews remaining words at current WPM; those previewed words become practice-only (score `0`) even if typed correctly afterward.
 
 ## Workflow Features
-- Passage Workspace in paced reading:
+- Passage workspace in paced reading:
   - `Save Sentence`
   - `Save Paragraph`
   - `Save Last 3`
-  - review queue with Recall/Predict/Hard/Easy/Done actions
-- Active exercise supports explicit `Return to Reading`.
-- Session continuity restores reading context after passage exercises.
-- Per-activity WPM persistence (paced-reading, active-recall, training) so speed tuning does not bleed across modes.
+  - review queue actions (`Recall`, `Predict`, `Hard`, `Easy`, `Done`)
+- Explicit `Return to Reading` from active exercise.
+- Session snapshot restore for reading/exercise continuity.
+- Per-activity WPM persistence (`paced-reading`, `active-recall`, `training`).
 
 ## Content Sources
 - URL import (Readability extraction).
 - Paste text.
 - RSS/Atom feeds.
 - Local library content in Electron (PDF/EPUB workflows).
-- Library sharing via `Export Manifest` / `Import Manifest` (manifest + shared source folders).
-- Wikipedia daily/random featured ingestion with reader-focused normalization.
+- Library sharing via `Export Manifest` / `Import Manifest`.
+- Wikipedia daily/random featured ingestion with reader-specific normalization.
 
-## Theme and Display
-- Theme: Dark / Light / System.
-- Mode-specific font sizing.
-- Prediction line width controls.
-- Ramp controls (curve, start %, rate/interval).
-
-## Keyboard (high-level)
+## Keyboard (High-Level)
 - `Space`: play/pause in playback modes.
 - `[` / `]`: adjust WPM for current activity.
-- `Esc`: back/exit depending on surface.
+- `Esc`: back/exit/skip depending on surface.
 - Prediction: `Tab` preview toggle.
-- Recall/training recall: `Enter`/`Space` submit or continue as context requires.
+- Recall/training recall: `Enter`/`Space` submit or continue depending on state.
+- Training Random Drill (no scaffold): `Tab` timed preview of remaining words (previewed words are unscored).
 
 ## Development
 
@@ -90,7 +86,18 @@ npm run build
 npm run electron:build
 ```
 
-## Docs
+## Quality Gates
+Run these before commit/PR:
+- `npm run lint`
+- `npm run test:run`
+- `npm run build`
+
+If `electron/**` changed, also run:
+- `npm run electron:build`
+
+## Project Docs
+- Agent/repo workflow: `AGENTS.md`
+- AI implementation context: `CLAUDE.md`
 - Product roadmap: `docs/brainstorming/saccade-entrypoint-product-roadmap.md`
-- Theme notes: `docs/brainstorming/theme-token-map.md`
-- Ops/runbook: `docs/operational-runbook.md`
+- Random drill corpus discussion: `docs/brainstorming/expanding-random-drill.txt`
+- Ops runbook: `docs/operational-runbook.md`

@@ -1,43 +1,54 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- `src/` contains the React + TypeScript renderer app.
-- `src/components/` holds UI modules by reading mode and app surface.
-- `src/hooks/` contains playback/state hooks (high-risk logic lives here).
-- `src/lib/` contains pure utilities (tokenization, timing, storage, saccade logic).
-- `src/test/` stores shared test helpers.
-- `electron/` contains Electron main/preload code and file extractors.
-- `library/` stores local content sources for Electron workflows.
-- `docs/` contains maintenance runbooks and mode-specific design notes.
-- Build artifacts (`dist/`, `dist-electron/`, `dist-electron-build/`) are generated output; do not edit directly.
+## Project Structure
+- `src/`: React + TypeScript renderer app.
+- `src/components/`: UI modules (reader surfaces, training, settings, library).
+- `src/hooks/`: playback/state hooks (`useRSVP`, timers, keyboard handling).
+- `src/lib/`: pure logic (tokenization, saccade layout, storage, Wikipedia/feed ingestion).
+- `src/test/`: shared test helpers.
+- `electron/`: Electron main/preload and local file extraction.
+- `library/`: local source content and processed references for personal use.
+- `docs/`: roadmap, runbooks, and maintenance notes.
+- Build artifacts (`dist/`, `dist-electron/`, `dist-electron-build/`) are generated; do not edit.
 
-## Build, Test, and Development Commands
+## Build, Test, Dev
 - `npm install`: install dependencies.
-- `npm run dev`: run web app locally (Vite).
-- `npm run electron:dev`: run app in Electron for local file features.
-- `npm run lint`: run ESLint across TS/TSX files.
-- `npm run test`: run Vitest in watch mode.
-- `npm run test:run`: run Vitest once (CI-style).
-- `npm run build`: type-check and build web bundle.
-- `npm run electron:build`: build Electron package (required when `electron/**` changes).
+- `npm run dev`: web app via Vite.
+- `npm run electron:dev`: Electron dev flow.
+- `npm run lint`: ESLint.
+- `npm run test`: Vitest watch mode.
+- `npm run test:run`: Vitest single run.
+- `npm run build`: type-check + web build.
+- `npm run electron:build`: Electron package build (required when touching `electron/**`).
 
-## Coding Style & Naming Conventions
-- TypeScript `strict` is enabled; keep types explicit at module boundaries.
-- Use 2-space indentation and single quotes; match semicolon usage already present in the file you modify.
-- Components use PascalCase filenames/exports (example: `TrainingReader.tsx`).
-- Hooks use `useX` camelCase naming (example: `usePlaybackTimer.ts`).
-- Tests use `.test.ts` suffix and should sit near related code or under `src/test/`.
-- Run `npm run lint` before opening a PR.
+## Coding Conventions
+- TypeScript strict mode is enabled. Keep module boundaries typed.
+- Use 2-space indentation and single quotes; match semicolon style in touched files.
+- Components: PascalCase files/exports.
+- Hooks: `useX` camelCase names.
+- Tests: `.test.ts` / `.test.tsx`, colocated or in `src/test/`.
 
-## Testing Guidelines
-- Test stack: Vitest + Testing Library with `jsdom` (`vitest.config.ts`, `vitest.setup.ts`).
-- Prefer deterministic tests: fake timers for playback behavior and storage helpers for persistence checks.
-- Add regression coverage for bug fixes in core paths (`useRSVP`, `usePlaybackTimer`, mode switches) unless technically impossible.
-- Required quality gates: `npm run lint`, `npm run test:run`, `npm run build`.
+## Testing Expectations
+- Add regression tests for logic changes in core reading/training paths.
+- Prefer deterministic tests (fake timers for timing-dependent behavior).
+- Quality gates before commit/PR:
+  - `npm run lint`
+  - `npm run test:run`
+  - `npm run build`
 
-## Commit & Pull Request Guidelines
-- Use short, imperative commit subjects (example: `Add recall scoring reset guard`).
-- Maintenance tickets may use prefixes when applicable (example: `MNT-009: add CI gates`).
-- Keep commits focused and avoid unrelated refactors.
-- PRs should include linked issue/ticket, root cause, impact scope, and verification notes; include screenshots for UI changes.
-- If `electron/**` is touched, verify `npm run electron:build` succeeds before requesting review.
+## Product-Specific Repo Policy
+- Content-specific extraction scripts (especially copyrighted personal-source processing) are local-use tooling and should not be committed.
+- Keep product code, tests, and generic tooling in commits; keep one-off local ingestion/debug scripts out of commits.
+- If modifying persistence schema (`src/lib/storage.ts`), include migration/backfill behavior and tests.
+
+## Documentation Maintenance
+- Update `README.md` for user-visible behavior changes (controls, scoring, mode semantics).
+- Update `CLAUDE.md` when architecture/data-flow assumptions change.
+- Prefer behavior-focused wording over roadmap language in top-level docs.
+- Avoid brittle details (for example, exact file counts) unless they are part of an automated check.
+
+## Commit / PR Guidance
+- Use short imperative commit titles.
+- Keep commits focused; avoid unrelated refactors.
+- PRs should include: root cause, user impact, scope, and verification notes.
+- Include screenshots for visible UI changes.
