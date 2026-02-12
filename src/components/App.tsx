@@ -62,14 +62,20 @@ import { measureTextMetrics } from '../lib/textMetrics';
 import { formatBookName } from './Library';
 import { isSentenceBoundaryChunk } from '../lib/predictionPreview';
 import { appViewStateReducer, getInitialViewState, viewStateToAction } from '../lib/appViewState';
-import { planCloseActiveExercise } from '../lib/sessionTransitions';
+import {
+  planCloseActiveExercise,
+  planContinueSession,
+  planFeaturedArticleLaunch,
+  planStartReadingFromPreview,
+} from '../lib/sessionTransitions';
+import {
+  getActiveWpmActivity,
+  getHeaderTitle,
+  isActiveView,
+  planContentBrowserArticleSelection,
+} from '../lib/appViewSelectors';
 import type { ViewState } from '../lib/appViewState';
-
-const ACTIVITY_LABELS: Record<Activity, string> = {
-  'paced-reading': 'Paced Reading',
-  'active-recall': 'Active Recall',
-  'training': 'Training',
-};
+import { upsertArticleByUrl } from '../lib/articleUpsert';
 
 const PASSAGE_CAPTURE_LAST_LINE_COUNT = 3;
 const MIN_WPM = 100;
@@ -305,31 +311,25 @@ export function App() {
   }, [articles, goHome, rsvp, setViewState, syncWpmForActivity]);
 
   // Keyboard shortcuts
-  const isActiveView = viewState.screen === 'active-reader' || viewState.screen === 'active-exercise' || viewState.screen === 'active-training';
-  const activeWpmActivity: Activity | null = viewState.screen === 'active-reader'
-    ? 'paced-reading'
-    : viewState.screen === 'active-exercise'
-      ? 'active-recall'
-      : viewState.screen === 'active-training'
-        ? 'training'
-        : null;
+  const activeView = isActiveView(viewState);
+  const activeWpmActivity: Activity | null = getActiveWpmActivity(viewState);
 
   useKeyboard({
-    onSpace: isActiveView && rsvp.displayMode !== 'prediction' && rsvp.displayMode !== 'recall' && rsvp.displayMode !== 'training'
+    onSpace: activeView && rsvp.displayMode !== 'prediction' && rsvp.displayMode !== 'recall' && rsvp.displayMode !== 'training'
       ? rsvp.toggle : undefined,
-    onLeft: isActiveView ? rsvp.prev : undefined,
-    onRight: isActiveView ? rsvp.next : undefined,
-    onBracketLeft: isActiveView && activeWpmActivity
+    onLeft: activeView ? rsvp.prev : undefined,
+    onRight: activeView ? rsvp.next : undefined,
+    onBracketLeft: activeView && activeWpmActivity
       ? () => setActivityWpm(activeWpmActivity, rsvp.wpm - 10)
       : undefined,
-    onBracketRight: isActiveView && activeWpmActivity
+    onBracketRight: activeView && activeWpmActivity
       ? () => setActivityWpm(activeWpmActivity, rsvp.wpm + 10)
       : undefined,
     onEscape: () => {
       if (viewState.screen === 'home') return;
       if (viewState.screen === 'active-exercise') {
         closeActiveExercise();
-      } else if (isActiveView) {
+      } else if (activeView) {
         goHome();
       } else if (viewState.screen === 'content-browser' || viewState.screen === 'preview' ||
                  viewState.screen === 'settings' || viewState.screen === 'library-settings' || viewState.screen === 'add') {
@@ -791,6 +791,25 @@ export function App() {
     });
   }, []);
 
+  const applySessionLaunchPlan = useCallback((plan: ReturnType<typeof planContinueSession>) => {
+    if (plan.clearSnapshot) {
+      clearSessionSnapshot();
+    }
+    syncWpmForActivity(plan.syncWpmActivity);
+    rsvp.loadArticle(plan.article, plan.loadOptions);
+    if (plan.saveLastSession) {
+      saveLastSession(
+        plan.saveLastSession.articleId,
+        plan.saveLastSession.activity,
+        plan.saveLastSession.displayMode
+      );
+    }
+    setViewState(plan.nextView);
+    if (plan.autoPlay) {
+      setTimeout(() => rsvp.play(), 100);
+    }
+  }, [rsvp, saveLastSession, setViewState, syncWpmForActivity]);
+
   const handleSelectActivity = useCallback((activity: Activity) => {
     syncWpmForActivity(activity);
     navigate({ screen: 'content-browser', activity });
@@ -809,12 +828,7 @@ export function App() {
     if (daily && daily.date === today) {
       const existing = articles.find(a => a.id === daily.articleId);
       if (existing) {
-        clearSessionSnapshot();
-        syncWpmForActivity('paced-reading');
-        rsvp.loadArticle(existing, { displayMode: 'saccade' });
-        saveLastSession(existing.id, 'paced-reading', 'saccade');
-        setViewState({ screen: 'active-reader' });
-        setTimeout(() => rsvp.play(), 100);
+        applySessionLaunchPlan(planFeaturedArticleLaunch(existing));
         return;
       }
     }
@@ -823,151 +837,76 @@ export function App() {
     setDailyError(null);
     try {
       const { title, content, url } = await fetchDailyArticle();
-
-      // Deduplicate by URL
-      const existing = articles.find(a => a.url === url);
-      let article: Article;
-      if (existing) {
-        if (existing.title !== title || existing.content !== content) {
-          const metrics = measureTextMetrics(content);
-          article = {
-            ...existing,
-            title,
-            content,
-            source: 'Wikipedia Daily',
-            group: 'Wikipedia',
-            ...metrics,
-          };
-          const updated = articles.map((a) => (a.id === existing.id ? article : a));
-          setArticles(updated);
-          saveArticles(updated);
-        } else {
-          article = existing;
-        }
-      } else {
-        const metrics = measureTextMetrics(content);
-        article = {
-          id: generateId(),
-          title,
-          content,
-          source: 'Wikipedia Daily',
-          url,
-          addedAt: Date.now(),
-          readPosition: 0,
-          isRead: false,
-          group: 'Wikipedia',
-          ...metrics,
-        };
-        const updated = [...articles, article];
-        setArticles(updated);
-        saveArticles(updated);
+      const upserted = upsertArticleByUrl({
+        existingArticles: articles,
+        title,
+        content,
+        url,
+        source: 'Wikipedia Daily',
+        group: 'Wikipedia',
+        now: Date.now(),
+        generateId,
+      });
+      if (upserted.changed) {
+        setArticles(upserted.articles);
+        saveArticles(upserted.articles);
       }
+      const article = upserted.article;
 
       saveDailyInfo(today, article.id);
-      clearSessionSnapshot();
-      syncWpmForActivity('paced-reading');
-      rsvp.loadArticle(article, { displayMode: 'saccade' });
-      saveLastSession(article.id, 'paced-reading', 'saccade');
       setDailyStatus('idle');
-      setViewState({ screen: 'active-reader' });
-      setTimeout(() => rsvp.play(), 100);
+      applySessionLaunchPlan(planFeaturedArticleLaunch(article));
     } catch (err) {
       setDailyStatus('error');
       setDailyError(err instanceof Error ? err.message : 'Failed to fetch daily article');
     }
-  }, [articles, rsvp, saveLastSession, setViewState, syncWpmForActivity]);
+  }, [applySessionLaunchPlan, articles]);
 
   const handleStartRandom = useCallback(async () => {
     setRandomStatus('loading');
     setRandomError(null);
     try {
       const { title, content, url } = await fetchRandomFeaturedArticle();
-
-      // Deduplicate by URL
-      const existing = articles.find(a => a.url === url);
-      let article: Article;
-      if (existing) {
-        if (existing.title !== title || existing.content !== content) {
-          const metrics = measureTextMetrics(content);
-          article = {
-            ...existing,
-            title,
-            content,
-            source: 'Wikipedia Featured',
-            group: 'Wikipedia',
-            ...metrics,
-          };
-          const updated = articles.map((a) => (a.id === existing.id ? article : a));
-          setArticles(updated);
-          saveArticles(updated);
-        } else {
-          article = existing;
-        }
-      } else {
-        const metrics = measureTextMetrics(content);
-        article = {
-          id: generateId(),
-          title,
-          content,
-          source: 'Wikipedia Featured',
-          url,
-          addedAt: Date.now(),
-          readPosition: 0,
-          isRead: false,
-          group: 'Wikipedia',
-          ...metrics,
-        };
-        const updated = [...articles, article];
-        setArticles(updated);
-        saveArticles(updated);
+      const upserted = upsertArticleByUrl({
+        existingArticles: articles,
+        title,
+        content,
+        url,
+        source: 'Wikipedia Featured',
+        group: 'Wikipedia',
+        now: Date.now(),
+        generateId,
+      });
+      if (upserted.changed) {
+        setArticles(upserted.articles);
+        saveArticles(upserted.articles);
       }
+      const article = upserted.article;
 
-      syncWpmForActivity('paced-reading');
-      rsvp.loadArticle(article, { displayMode: 'saccade' });
-      clearSessionSnapshot();
-      saveLastSession(article.id, 'paced-reading', 'saccade');
       setRandomStatus('idle');
-      setViewState({ screen: 'active-reader' });
-      setTimeout(() => rsvp.play(), 100);
+      applySessionLaunchPlan(planFeaturedArticleLaunch(article));
     } catch (err) {
       setRandomStatus('error');
       setRandomError(err instanceof Error ? err.message : 'Failed to fetch article');
     }
-  }, [articles, rsvp, saveLastSession, setViewState, syncWpmForActivity]);
+  }, [applySessionLaunchPlan, articles]);
 
   // Content browser → article selected → preview
   const handleContentBrowserSelectArticle = useCallback((article: Article) => {
     if (viewState.screen === 'content-browser') {
-      const activity = viewState.activity;
-      if (activity === 'training') {
-        // Training skips preview, goes directly to training setup
-        navigate({ screen: 'active-training', article });
-        return;
-      }
-      navigate({ screen: 'preview', activity, article });
+      navigate(planContentBrowserArticleSelection(viewState.activity, article));
     }
   }, [viewState, navigate]);
 
   // Preview → start reading
   const handleStartReading = useCallback((article: Article, wpm: number, mode: TokenMode) => {
     if (viewState.screen !== 'preview') return;
-    const activity = viewState.activity;
+    const launchPlan = planStartReadingFromPreview(viewState.activity, article, mode);
+    if (!launchPlan) return;
 
-    setActivityWpm(activity, wpm);
-
-    if (activity === 'paced-reading') {
-      clearSessionSnapshot();
-      rsvp.loadArticle(article, { mode, displayMode: 'saccade' });
-      saveLastSession(article.id, 'paced-reading', 'saccade');
-      setViewState({ screen: 'active-reader' });
-      setTimeout(() => rsvp.play(), 100);
-    } else if (activity === 'active-recall') {
-      clearSessionSnapshot();
-      rsvp.loadArticle(article, { displayMode: 'prediction' });
-      saveLastSession(article.id, 'active-recall', 'prediction');
-      setViewState({ screen: 'active-exercise' });
-    }
-  }, [rsvp, saveLastSession, setActivityWpm, setViewState, viewState]);
+    setActivityWpm(launchPlan.syncWpmActivity, wpm);
+    applySessionLaunchPlan(launchPlan);
+  }, [applySessionLaunchPlan, setActivityWpm, viewState]);
 
   // Continue from home screen
   const continueInfo = useMemo(() => {
@@ -979,19 +918,8 @@ export function App() {
   }, [settings.lastSession, articles]);
 
   const handleContinue = useCallback((info: { article: Article; activity: Activity; displayMode: DisplayMode }) => {
-    clearSessionSnapshot();
-    syncWpmForActivity(info.activity);
-    rsvp.loadArticle(info.article, { displayMode: info.displayMode });
-
-    if (info.activity === 'paced-reading') {
-      setViewState({ screen: 'active-reader' });
-      setTimeout(() => rsvp.play(), 100);
-    } else if (info.activity === 'active-recall') {
-      setViewState({ screen: 'active-exercise' });
-    } else if (info.activity === 'training') {
-      setViewState({ screen: 'active-training', article: info.article });
-    }
-  }, [rsvp, setViewState, syncWpmForActivity]);
+    applySessionLaunchPlan(planContinueSession(info));
+  }, [applySessionLaunchPlan]);
 
   // --- Computed values ---
 
@@ -1011,18 +939,7 @@ export function App() {
   const progress = calculateProgress(rsvp.currentChunkIndex, rsvp.chunks.length);
 
   // Header title based on view
-  const headerTitle = (() => {
-    switch (viewState.screen) {
-      case 'active-reader': return 'Paced Reading';
-      case 'active-exercise': return 'Active Recall';
-      case 'active-training': return 'Training';
-      case 'content-browser': return ACTIVITY_LABELS[viewState.activity];
-      case 'preview': return ACTIVITY_LABELS[viewState.activity];
-      case 'settings': return 'Settings';
-      case 'library-settings': return 'Library Settings';
-      default: return 'Reader';
-    }
-  })();
+  const headerTitle = getHeaderTitle(viewState);
 
   const showBackButton = viewState.screen !== 'home';
   const headerBackAction = viewState.screen === 'active-exercise' ? closeActiveExercise : goHome;

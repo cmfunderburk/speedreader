@@ -16,6 +16,7 @@ import {
   saveTrainingScaffold,
 } from '../lib/storage';
 import { DRILL_WPM_STEP, adjustDrillDifficulty, getDrillRound } from '../lib/trainingDrill';
+import { planTrainingContinue, planTrainingStart } from '../lib/trainingPhase';
 import type { TrainingHistory, DrillState } from '../lib/storage';
 import { SaccadeLineComponent } from './SaccadeReader';
 
@@ -781,44 +782,52 @@ export function TrainingReader({
     setLastPreviewPenaltyCount(0);
     setFeedbackText('');
 
-    if (isDrill) {
-      // Check timed session expiry
-      if (sessionTimeLimit != null && sessionStartTime != null) {
-        const elapsed = (Date.now() - sessionStartTime) / 1000;
-        if (elapsed >= sessionTimeLimit) {
-          setPhase('complete');
-          return;
-        }
-      }
+    const continuePlan = planTrainingContinue({
+      isDrill,
+      shouldRepeat,
+      currentParagraphIndex,
+      paragraphCount: paragraphs.length,
+      sessionTimeLimit,
+      sessionStartTime,
+      now: Date.now(),
+      drillSentenceIndex,
+      drillRoundSentenceCount,
+      drillSentenceCount: drillSentences.length,
+    });
 
-      // Advance within article or fetch next
-      const nextIdx = drillSentenceIndex + drillRoundSentenceCount;
-      if (nextIdx < drillSentences.length) {
-        setDrillSentenceIndex(nextIdx);
-        setPhase('reading');
-      } else {
-        // Article exhausted — fetch next
-        window.corpus?.sampleArticle(drillCorpusFamily, drillTier).then(article => {
-          if (article) {
-            setDrillArticle(article);
-            setDrillSentenceIndex(0);
-            setPhase('reading');
-          } else {
-            setPhase('complete');
-          }
-        });
-      }
-    } else if (shouldRepeat) {
-      // Repeat same paragraph
+    if (continuePlan.type === 'complete') {
+      setPhase('complete');
+      return;
+    }
+
+    if (continuePlan.type === 'reading-same-paragraph') {
       setPhase('reading');
-    } else {
-      const nextIdx = currentParagraphIndex + 1;
-      if (nextIdx >= paragraphs.length) {
-        setPhase('complete');
-      } else {
-        setCurrentParagraphIndex(nextIdx);
-        setPhase('reading');
-      }
+      return;
+    }
+
+    if (continuePlan.type === 'reading-next-paragraph') {
+      setCurrentParagraphIndex(continuePlan.nextParagraphIndex);
+      setPhase('reading');
+      return;
+    }
+
+    if (continuePlan.type === 'drill-next-sentence') {
+      setDrillSentenceIndex(continuePlan.nextSentenceIndex);
+      setPhase('reading');
+      return;
+    }
+
+    if (continuePlan.type === 'drill-fetch-next-article') {
+      // Article exhausted — fetch next
+      window.corpus?.sampleArticle(drillCorpusFamily, drillTier).then(article => {
+        if (article) {
+          setDrillArticle(article);
+          setDrillSentenceIndex(0);
+          setPhase('reading');
+        } else {
+          setPhase('complete');
+        }
+      });
     }
   }, [isDrill, shouldRepeat, currentParagraphIndex, paragraphs.length, sessionTimeLimit, sessionStartTime, drillSentenceIndex, drillRoundSentenceCount, drillSentences.length, drillCorpusFamily, drillTier]);
 
@@ -831,7 +840,8 @@ export function TrainingReader({
     setDrillPreviewVisibleCount(0);
     setLastPreviewPenaltyCount(0);
 
-    if (isDrill) {
+    const startPlan = planTrainingStart(isDrill);
+    if (startPlan.type === 'drill-fetch-first-article') {
       // Reset per-session counters (cross-session state persists from init)
       setDrillRoundsCompleted(0);
       setDrillScoreSum(0);

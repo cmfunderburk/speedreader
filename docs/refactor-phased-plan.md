@@ -32,8 +32,10 @@ Exit criteria:
 ## Phase 3: State Orchestration Split
 - [x] Extract `App` view-state transitions into a reducer module.
 - [x] Extract close-active-exercise transition planning into pure transition logic.
+- [x] Extract launch/continue session planning (`preview`, `continue`, `daily/random`) into pure transition logic.
+- [x] Extract `TrainingReader` continue/start phase planning into pure state logic.
 - [ ] Continue extracting remaining `App` navigation/session transitions from component callbacks.
-- Extract `TrainingReader` phase transitions into pure state logic.
+- [ ] Continue extracting remaining `TrainingReader` phase transitions into pure state logic.
 - Keep rendering components focused on view concerns.
 
 Exit criteria:

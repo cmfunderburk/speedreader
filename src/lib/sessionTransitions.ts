@@ -1,4 +1,5 @@
-import type { Article, DisplayMode, SessionSnapshot } from '../types';
+import type { Activity, Article, DisplayMode, SessionSnapshot, TokenMode } from '../types';
+import type { ViewState } from './appViewState';
 
 interface ResumeReadingPlan {
   article: Article;
@@ -11,8 +12,51 @@ export type CloseActiveExercisePlan =
   | { type: 'resume-reading'; plan: ResumeReadingPlan }
   | { type: 'go-home'; clearSnapshot: boolean };
 
+export interface SessionLaunchPlan {
+  article: Article;
+  clearSnapshot: boolean;
+  syncWpmActivity: Activity;
+  loadOptions: {
+    displayMode: DisplayMode;
+    mode?: TokenMode;
+  };
+  saveLastSession?: {
+    articleId: string;
+    activity: Activity;
+    displayMode: DisplayMode;
+  };
+  nextView: ViewState;
+  autoPlay: boolean;
+}
+
+export interface ContinueSessionInfo {
+  article: Article;
+  activity: Activity;
+  displayMode: DisplayMode;
+}
+
 function normalizeReadingDisplayMode(displayMode: DisplayMode): 'saccade' | 'rsvp' {
   return displayMode === 'saccade' || displayMode === 'rsvp' ? displayMode : 'saccade';
+}
+
+function createPacedReadingLaunchPlan(
+  article: Article,
+  displayMode: 'saccade' | 'rsvp',
+  mode?: TokenMode
+): SessionLaunchPlan {
+  return {
+    article,
+    clearSnapshot: true,
+    syncWpmActivity: 'paced-reading',
+    loadOptions: { displayMode, ...(mode ? { mode } : {}) },
+    saveLastSession: {
+      articleId: article.id,
+      activity: 'paced-reading',
+      displayMode,
+    },
+    nextView: { screen: 'active-reader' },
+    autoPlay: true,
+  };
 }
 
 export function planCloseActiveExercise(
@@ -43,5 +87,67 @@ export function planCloseActiveExercise(
         updatedAt: now,
       },
     },
+  };
+}
+
+export function planFeaturedArticleLaunch(article: Article): SessionLaunchPlan {
+  return createPacedReadingLaunchPlan(article, 'saccade');
+}
+
+export function planStartReadingFromPreview(
+  activity: Activity,
+  article: Article,
+  mode: TokenMode
+): SessionLaunchPlan | null {
+  if (activity === 'paced-reading') {
+    return createPacedReadingLaunchPlan(article, 'saccade', mode);
+  }
+
+  if (activity === 'active-recall') {
+    return {
+      article,
+      clearSnapshot: true,
+      syncWpmActivity: 'active-recall',
+      loadOptions: { displayMode: 'prediction' },
+      saveLastSession: {
+        articleId: article.id,
+        activity: 'active-recall',
+        displayMode: 'prediction',
+      },
+      nextView: { screen: 'active-exercise' },
+      autoPlay: false,
+    };
+  }
+
+  return null;
+}
+
+export function planContinueSession(info: ContinueSessionInfo): SessionLaunchPlan {
+  if (info.activity === 'paced-reading') {
+    const displayMode = normalizeReadingDisplayMode(info.displayMode);
+    return {
+      ...createPacedReadingLaunchPlan(info.article, displayMode),
+      saveLastSession: undefined,
+    };
+  }
+
+  if (info.activity === 'active-recall') {
+    return {
+      article: info.article,
+      clearSnapshot: true,
+      syncWpmActivity: 'active-recall',
+      loadOptions: { displayMode: info.displayMode },
+      nextView: { screen: 'active-exercise' },
+      autoPlay: false,
+    };
+  }
+
+  return {
+    article: info.article,
+    clearSnapshot: true,
+    syncWpmActivity: 'training',
+    loadOptions: { displayMode: info.displayMode },
+    nextView: { screen: 'active-training', article: info.article },
+    autoPlay: false,
   };
 }
