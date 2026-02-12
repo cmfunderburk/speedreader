@@ -49,9 +49,9 @@ Explicitly deferred:
 
 ## Verification
 Current branch verification:
-- `npm run verify` passed.
-- `npm run verify:ci` passed.
-- `npm run electron:build` attempted in local environment (`npm@11.7.0`) but failed in `electron-builder` npm dependency-tree collection (`No JSON content found in output` after workspace probe).
+- `bun run verify` passed.
+- `bun run verify:ci` passed.
+- `bun run electron:build` passed in the current Bun-based local environment.
 
 Automated totals:
 - Test files: 31
@@ -67,7 +67,7 @@ Coverage (`verify:ci`):
 - `App.tsx` and `TrainingReader.tsx` remain large orchestration components (improved, not fully decomposed).
 - Passage capture UI integration coverage is strongest for sentence capture; paragraph/last-lines rely more on planner/unit coverage.
 - Drill-specific no-scaffold preview-forfeit (`Tab`) remains mostly planner-covered.
-- Local Electron packaging validation is currently constrained by npm/electron-builder compatibility in this environment.
+- Electron packaging remains toolchain-sensitive across host environments; CI electron build remains the authoritative gate.
 
 ## Reviewer Notes
 - Focus review on behavior parity in transitions and coverage adequacy for remaining moderate-risk scenarios.

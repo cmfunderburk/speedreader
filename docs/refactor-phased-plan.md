@@ -17,10 +17,10 @@ For PR open/close criteria and final go/no-go gates, see `docs/refactor-pr-readi
 - [x] Follow-up: dependency hygiene pass (remove unused direct deps after validation).
 
 Exit criteria:
-- `npm run lint`
-- `npm run test:run`
-- `npm run build`
-- `npm run typecheck:electron`
+- `bun run lint`
+- `bun run test:run`
+- `bun run build`
+- `bun run typecheck:electron`
 
 ## Phase 2: Persistence Boundary
 - [x] Move remaining direct UI storage access into `src/lib/storage.ts`.
@@ -70,8 +70,8 @@ Exit criteria:
 - [x] Decide storage strategy for this PR scope: keep `localStorage` and document explicit re-evaluation triggers.
 - [x] Add coverage thresholds for `components` and critical state modules.
 - [x] Standardize CI checks to include web + Electron type checks.
-- [x] Add a single local gate command (`npm run verify`) to run lint + tests + build consistently.
-- [x] Add CI gate command (`npm run verify:ci`) to enforce coverage thresholds before build.
+- [x] Add a single local gate command (`bun run verify`) to run lint + tests + build consistently.
+- [x] Add CI gate command (`bun run verify:ci`) to enforce coverage thresholds before build.
 
 Exit criteria:
 - Storage strategy is explicitly documented and deferred/implemented intentionally.

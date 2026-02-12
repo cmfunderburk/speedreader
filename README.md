@@ -72,32 +72,32 @@ The design goal is to reduce friction between reading and retention practice by 
 ## Development
 
 ```bash
-npm install
-npm run dev
-npm run electron:dev
-npm run typecheck
-npm run lint
-npm run test:run
-npm run verify
-npm run build
+bun install
+bun run dev
+bun run electron:dev
+bun run typecheck
+bun run lint
+bun run test:run
+bun run verify
+bun run build
 ```
 
 ## Electron Build
 
 ```bash
-npm run electron:build
+bun run electron:build
 ```
 
 ## Quality Gates
 Run these before commit/PR:
-- `npm run verify`
-- `npm run typecheck`
-- `npm run lint`
-- `npm run test:run`
-- `npm run build`
+- `bun run verify`
+- `bun run typecheck`
+- `bun run lint`
+- `bun run test:run`
+- `bun run build`
 
 If `electron/**` changed, also run:
-- `npm run electron:build`
+- `bun run electron:build`
 
 ## Project Docs
 - Agent/repo workflow: `AGENTS.md`

@@ -66,15 +66,15 @@ Use this template:
 Required gate commands:
 
 ```bash
-npm run lint
-npm run test:run
-npm run build
+bun run lint
+bun run test:run
+bun run build
 ```
 
 If `electron/**` changed:
 
 ```bash
-npm run electron:build
+bun run electron:build
 ```
 
 ## 5) PR Checklist

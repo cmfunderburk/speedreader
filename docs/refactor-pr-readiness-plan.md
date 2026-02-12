@@ -34,8 +34,8 @@ The refactor is considered finished for PR when all items below are true.
 - No known high-severity behavior gaps remain open.
 
 ### 3) Quality Gates Are Reliable
-- `npm run verify` passes locally on the branch.
-- `npm run verify:ci` passes locally and in CI.
+- `bun run verify` passes locally on the branch.
+- `bun run verify:ci` passes locally and in CI.
 - CI includes web lint/test/build and Electron build checks for relevant changes.
 - Coverage thresholds enforce minimum confidence for critical extracted modules and component layer.
 
@@ -49,7 +49,7 @@ The refactor is considered finished for PR when all items below are true.
 - Commits ahead of `main`: 7
 - Diff size vs `main`: 53 files, +4087 / -1382
 - Test status: 31 files, 237 tests passing
-- Coverage (`npm run verify:ci`):
+- Coverage (`bun run verify:ci`):
   - Statements: 62.41%
   - Branches: 54.21%
   - Functions: 60.95%
@@ -66,7 +66,7 @@ The refactor is considered finished for PR when all items below are true.
 ## Current Gaps To Close Before PR
 - Component coverage gate exists but still allows substantial untested UI orchestration paths.
 - Behavior parity matrix contains a small set of intentionally `Moderate` scenarios; those residual risks must be called out explicitly in PR notes.
-- Local `electron:build` is currently blocked in this environment (`npm@11.7.0`) by an `electron-builder` npm dependency-tree collection failure (`No JSON content found in output` after `npm prefix -w` workspace probe).
+- Local `bun run electron:build` passes in the current development environment; CI remains the authoritative packaging gate for PR readiness.
 
 ## Workstreams To Reach PR-Ready
 
@@ -107,7 +107,7 @@ Done criteria:
 ### Workstream D: CI/Gate Hardening
 Deliverables:
 - Expand Electron-change detection in CI to include shared contract/type surfaces (`shared/**`, relevant TS config/scripts) that can affect Electron correctness.
-- Confirm `npm run verify:ci` remains the authoritative PR gate command.
+- Confirm `bun run verify:ci` remains the authoritative PR gate command.
 - Tune thresholds only with explicit justification tied to risk and current test strategy.
 
 Done criteria:
@@ -136,9 +136,9 @@ Deliverables:
   - risk areas,
   - verification results.
 - Attach or summarize outputs of:
-  - `npm run verify`
-  - `npm run verify:ci`
-  - `npm run electron:build` when Electron-relevant files changed
+  - `bun run verify`
+  - `bun run verify:ci`
+  - `bun run electron:build` when Electron-relevant files changed
 - Include screenshots only if UI behavior changed visibly.
 
 Done criteria:
@@ -153,9 +153,9 @@ All must be true before opening PR:
 - [ ] Workstream C complete or explicitly scoped down with rationale.
 - [ ] Workstream D complete.
 - [ ] Workstream E complete.
-- [ ] `npm run verify` passes.
-- [ ] `npm run verify:ci` passes.
-- [ ] `npm run electron:build` run when required by changed files.
+- [ ] `bun run verify` passes.
+- [ ] `bun run verify:ci` passes.
+- [ ] `bun run electron:build` run when required by changed files.
 - [ ] Refactor docs are synchronized with actual branch state.
 - [ ] PR write-up includes verification evidence and known residual risks.
 

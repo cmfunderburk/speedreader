@@ -14,11 +14,9 @@
 - Refreshed this handoff to current branch/validation status.
 
 ## Validation Status At Stop
-- `npm run verify` passes.
-- `npm run verify:ci` passes.
-- `npm run electron:build` currently fails locally in this environment (`npm@11.7.0`) with:
-  - `electron-builder` npm dependency-tree collection error (`No JSON content found in output`).
-  - related probe failure observed: `npm prefix -w` returns `ENOWORKSPACES` under npm 11.
+- `bun run verify` passes.
+- `bun run verify:ci` passes.
+- `bun run electron:build` passes in the current Bun-based local environment.
 - Current automated totals:
   - Test files: 31
   - Tests: 237
@@ -48,7 +46,7 @@ From `docs/refactor-pr-readiness-plan.md`:
 ## Suggested Next Session Sequence
 1. Finalize Workstream F: trim/adjust `docs/refactor-pr-draft.md` into final PR description.
 2. Capture explicit residual risk acceptance from Workstream B directly in PR notes.
-3. Re-run `npm run verify` and `npm run verify:ci` immediately before opening PR.
+3. Re-run `bun run verify` and `bun run verify:ci` immediately before opening PR.
 4. Update this handoff and the PR-readiness checklist with final go/no-go status.
 
 ## Notes

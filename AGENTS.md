@@ -12,14 +12,14 @@
 - Build artifacts (`dist/`, `dist-electron/`, `dist-electron-build/`) are generated; do not edit.
 
 ## Build, Test, Dev
-- `npm install`: install dependencies.
-- `npm run dev`: web app via Vite.
-- `npm run electron:dev`: Electron dev flow.
-- `npm run lint`: ESLint.
-- `npm run test`: Vitest watch mode.
-- `npm run test:run`: Vitest single run.
-- `npm run build`: type-check + web build.
-- `npm run electron:build`: Electron package build (required when touching `electron/**`).
+- `bun install`: install dependencies.
+- `bun run dev`: web app via Vite.
+- `bun run electron:dev`: Electron dev flow.
+- `bun run lint`: ESLint.
+- `bun run test`: Vitest watch mode.
+- `bun run test:run`: Vitest single run.
+- `bun run build`: type-check + web build.
+- `bun run electron:build`: Electron package build (required when touching `electron/**`).
 
 ## Coding Conventions
 - TypeScript strict mode is enabled. Keep module boundaries typed.
@@ -32,9 +32,9 @@
 - Add regression tests for logic changes in core reading/training paths.
 - Prefer deterministic tests (fake timers for timing-dependent behavior).
 - Quality gates before commit/PR:
-  - `npm run lint`
-  - `npm run test:run`
-  - `npm run build`
+  - `bun run lint`
+  - `bun run test:run`
+  - `bun run build`
 
 ## Product-Specific Repo Policy
 - Content-specific extraction scripts (especially copyrighted personal-source processing) are local-use tooling and should not be committed.

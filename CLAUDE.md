@@ -58,13 +58,13 @@ shared/           Electron IPC contract types shared by preload + renderer
 ## Build & Test
 
 ```bash
-npm run dev
-npm run electron:dev
-npm run lint
-npm run test:run
-npm run verify
-npm run build
-npm run electron:build  # when electron/** changes
+bun run dev
+bun run electron:dev
+bun run lint
+bun run test:run
+bun run verify
+bun run build
+bun run electron:build  # when electron/** changes
 ```
 
 ## Conventions

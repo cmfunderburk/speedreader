@@ -54,15 +54,15 @@ Aging targets:
 All maintenance and feature PRs must pass before merge:
 
 ```bash
-npm run lint
-npm run test:run
-npm run build
+bun run lint
+bun run test:run
+bun run build
 ```
 
 Additional gate when `electron/**` is touched:
 
 ```bash
-npm run electron:build
+bun run electron:build
 ```
 
 Policy:
