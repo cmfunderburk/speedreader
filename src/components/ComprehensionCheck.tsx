@@ -23,8 +23,40 @@ interface CheckResults {
   overallScore: number;
 }
 
+type ReviewDepth = 'quick' | 'standard' | 'deep';
+type ResultFilter = 'all' | 'needs-review';
+
 const MISSING_API_KEY_ERROR = 'Comprehension check requires an API key';
 const MISSING_API_KEY_HELP_TEXT = 'Comprehension Check requires an API key. Add your key in Settings and retry.';
+
+function normalizeComparisonText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function feedbackMatchesModelAnswer(question: ComprehensionQuestionResult): boolean {
+  return normalizeComparisonText(question.feedback) === normalizeComparisonText(question.modelAnswer);
+}
+
+function isQuestionNeedsReview(question: ComprehensionQuestionResult): boolean {
+  if (question.correct !== undefined) {
+    return !question.correct;
+  }
+  return question.score < 3;
+}
+
+function getQuestionStatus(question: ComprehensionQuestionResult): {
+  label: string;
+  tone: 'correct' | 'partial' | 'incorrect';
+} {
+  if (question.correct !== undefined) {
+    return question.correct
+      ? { label: 'Correct', tone: 'correct' }
+      : { label: 'Incorrect', tone: 'incorrect' };
+  }
+  if (question.score >= 3) return { label: 'Strong', tone: 'correct' };
+  if (question.score >= 2) return { label: 'Partial', tone: 'partial' };
+  return { label: 'Needs review', tone: 'incorrect' };
+}
 
 function formatUserAnswer(question: GeneratedComprehensionQuestion, response: string): string {
   if (question.format === 'multiple-choice') {
@@ -71,6 +103,8 @@ export function ComprehensionCheck({
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'submitting' | 'complete'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMissingApiKeyError, setIsMissingApiKeyError] = useState(false);
+  const [reviewDepth, setReviewDepth] = useState<ReviewDepth>('quick');
+  const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
   const [questions, setQuestions] = useState<GeneratedComprehensionQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [responses, setResponses] = useState<Record<string, string>>({});
@@ -95,6 +129,8 @@ export function ComprehensionCheck({
     setStatus('loading');
     setErrorMessage(null);
     setIsMissingApiKeyError(false);
+    setReviewDepth('quick');
+    setResultFilter('all');
     setResults(null);
     setResponses({});
     setCurrentIndex(0);
@@ -232,23 +268,145 @@ export function ComprehensionCheck({
   }
 
   if (status === 'complete' && results) {
+    const questionEntries = results.questions.map((question, index) => {
+      const statusInfo = getQuestionStatus(question);
+      return {
+        question,
+        index,
+        statusInfo,
+        needsReview: isQuestionNeedsReview(question),
+        feedbackDuplicate: feedbackMatchesModelAnswer(question),
+      };
+    });
+    const visibleEntries = questionEntries.filter((entry) => {
+      if (resultFilter === 'all') return true;
+      return entry.needsReview;
+    });
+    const needsReviewCount = questionEntries.filter((entry) => entry.needsReview).length;
+    const correctCount = questionEntries.length - needsReviewCount;
+    const dimensionStats = questionEntries.reduce((acc, entry) => {
+      const key = entry.question.dimension;
+      const existing = acc.get(key) ?? { total: 0, scoreTotal: 0 };
+      existing.total += 1;
+      existing.scoreTotal += Math.max(0, Math.min(3, entry.question.score));
+      acc.set(key, existing);
+      return acc;
+    }, new Map<string, { total: number; scoreTotal: number }>());
+    const focusDimensions = Array.from(dimensionStats.entries())
+      .map(([dimension, stat]) => ({ dimension, average: stat.scoreTotal / stat.total }))
+      .filter((item) => item.average < 2.2)
+      .sort((a, b) => a.average - b.average)
+      .slice(0, 2)
+      .map((item) => item.dimension);
+
     return (
       <div className="comprehension-check">
         <h2>Comprehension Check Results</h2>
         <p className="comprehension-summary">
           Overall score: <strong>{results.overallScore}%</strong>
         </p>
+
+        <div className="comprehension-results-toolbar">
+          <div className="comprehension-results-chips">
+            <span className="comprehension-chip">Correct: {correctCount}/{questionEntries.length}</span>
+            <span className="comprehension-chip comprehension-chip-warning">Needs review: {needsReviewCount}</span>
+            {focusDimensions.length > 0 && (
+              <span className="comprehension-chip">Focus: {focusDimensions.join(', ')}</span>
+            )}
+          </div>
+
+          <div className="comprehension-results-controls">
+            <span className="comprehension-results-controls-label">Review depth</span>
+            <div className="comprehension-results-control-buttons">
+              <button
+                className={`settings-preset${reviewDepth === 'quick' ? ' settings-preset-active' : ''}`}
+                onClick={() => setReviewDepth('quick')}
+              >
+                Quick
+              </button>
+              <button
+                className={`settings-preset${reviewDepth === 'standard' ? ' settings-preset-active' : ''}`}
+                onClick={() => setReviewDepth('standard')}
+              >
+                Standard
+              </button>
+              <button
+                className={`settings-preset${reviewDepth === 'deep' ? ' settings-preset-active' : ''}`}
+                onClick={() => setReviewDepth('deep')}
+              >
+                Deep
+              </button>
+            </div>
+          </div>
+
+          <div className="comprehension-results-controls">
+            <span className="comprehension-results-controls-label">Filter</span>
+            <div className="comprehension-results-control-buttons">
+              <button
+                className={`settings-preset${resultFilter === 'all' ? ' settings-preset-active' : ''}`}
+                onClick={() => setResultFilter('all')}
+              >
+                All questions
+              </button>
+              <button
+                className={`settings-preset${resultFilter === 'needs-review' ? ' settings-preset-active' : ''}`}
+                onClick={() => setResultFilter('needs-review')}
+              >
+                Needs review
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {visibleEntries.length === 0 && (
+          <p className="comprehension-summary">No questions match this filter.</p>
+        )}
+
         <div className="comprehension-results">
-          {results.questions.map((question, index) => (
+          {visibleEntries.map(({ question, index, statusInfo, needsReview, feedbackDuplicate }) => (
             <article key={question.id} className="comprehension-result-card">
-              <h3>Q{index + 1} · {question.dimension} · {question.format}</h3>
+              <div className="comprehension-result-header">
+                <h3>Q{index + 1} · {question.dimension} · {question.format}</h3>
+                <span className={`comprehension-result-status ${statusInfo.tone}`}>
+                  {statusInfo.label}
+                </span>
+              </div>
               <p className="comprehension-result-prompt">{question.prompt}</p>
               <p><strong>Your answer:</strong> {question.userAnswer || '(no answer)'}</p>
               {question.correct !== undefined && (
                 <p><strong>Auto score:</strong> {question.correct ? 'Correct' : 'Incorrect'}</p>
               )}
-              <p><strong>Feedback:</strong> {question.feedback}</p>
-              <p><strong>Model answer:</strong> {question.modelAnswer}</p>
+
+              {reviewDepth === 'quick' && needsReview && (
+                <p><strong>Why:</strong> {question.feedback}</p>
+              )}
+
+              {reviewDepth === 'standard' && (
+                <>
+                  {feedbackDuplicate ? (
+                    <p><strong>Explanation:</strong> {question.feedback}</p>
+                  ) : (
+                    <>
+                      <p><strong>Feedback:</strong> {question.feedback}</p>
+                      {needsReview && <p><strong>Model answer:</strong> {question.modelAnswer}</p>}
+                    </>
+                  )}
+                </>
+              )}
+
+              {reviewDepth === 'deep' && (
+                <>
+                  {feedbackDuplicate ? (
+                    <p><strong>Feedback / model answer:</strong> {question.feedback}</p>
+                  ) : (
+                    <>
+                      <p><strong>Feedback:</strong> {question.feedback}</p>
+                      <p><strong>Model answer:</strong> {question.modelAnswer}</p>
+                    </>
+                  )}
+                  <p><strong>Score:</strong> {question.score}/3</p>
+                </>
+              )}
             </article>
           ))}
         </div>

@@ -1177,6 +1177,7 @@ export function App() {
             randomError={randomError}
             continueInfo={continueInfo}
             comprehensionSummary={comprehensionSummary}
+            comprehensionAttempts={comprehensionAttempts}
           />
         )}
 

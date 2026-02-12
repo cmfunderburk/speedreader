@@ -163,4 +163,55 @@ describe('ComprehensionCheck', () => {
     expect(screen.queryByRole('button', { name: 'Open Settings' })).toBeNull();
     expect(onOpenSettings).toHaveBeenCalledTimes(0);
   });
+
+  it('supports review depth controls and deduplicates repeated explanation text', async () => {
+    const generated: GeneratedComprehensionCheck = {
+      questions: [
+        {
+          id: 'q1',
+          dimension: 'factual',
+          format: 'multiple-choice',
+          prompt: 'Which option is correct?',
+          options: ['Wrong', 'Right', 'Other', 'Also wrong'],
+          correctOptionIndex: 1,
+          modelAnswer: 'Right is correct based on the passage.',
+        },
+      ],
+    };
+    const adapter: ComprehensionAdapter = {
+      generateCheck: vi.fn(async () => generated),
+      scoreAnswer: vi.fn(async () => ({ score: 0, feedback: '' })),
+    };
+
+    render(
+      <ComprehensionCheck
+        article={makeArticle()}
+        entryPoint="launcher"
+        adapter={adapter}
+        onClose={() => {}}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Question 1 of 1/i)).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText('Wrong'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Comprehension Check Results/i)).toBeTruthy();
+    });
+
+    expect(screen.getByRole('button', { name: 'Quick' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Standard' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Deep' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Standard' }));
+    expect(screen.getByText(/Explanation:/i)).toBeTruthy();
+    expect(screen.queryByText(/Model answer:/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deep' }));
+    expect(screen.getByText(/Feedback \/ model answer:/i)).toBeTruthy();
+  });
 });

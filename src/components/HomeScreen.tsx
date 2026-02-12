@@ -1,4 +1,5 @@
-import type { Activity, Article, DisplayMode } from '../types';
+import { useState } from 'react';
+import type { Activity, Article, ComprehensionAttempt, DisplayMode } from '../types';
 
 interface ContinueInfo {
   article: Article;
@@ -18,6 +19,28 @@ interface HomeScreenProps {
   randomError: string | null;
   continueInfo: ContinueInfo | null;
   comprehensionSummary: { attemptCount: number; lastScore: number | null };
+  comprehensionAttempts: ComprehensionAttempt[];
+}
+
+const MAX_HISTORY_ATTEMPTS = 30;
+
+function formatAttemptDate(timestamp: number): string {
+  try {
+    return new Date(timestamp).toLocaleString();
+  } catch {
+    return String(timestamp);
+  }
+}
+
+function formatDuration(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatEntryPoint(entryPoint: ComprehensionAttempt['entryPoint']): string {
+  return entryPoint === 'post-reading' ? 'Post-reading' : 'Launcher';
 }
 
 export function HomeScreen({
@@ -32,7 +55,11 @@ export function HomeScreen({
   randomError,
   continueInfo,
   comprehensionSummary,
+  comprehensionAttempts,
 }: HomeScreenProps) {
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const attemptsToShow = comprehensionAttempts.slice(0, MAX_HISTORY_ATTEMPTS);
+
   return (
     <div className="home-screen">
       {continueInfo && (
@@ -105,10 +132,7 @@ export function HomeScreen({
           </div>
         </button>
 
-        <button
-          className="activity-card"
-          onClick={() => onSelectActivity('comprehension-check')}
-        >
+        <div className="activity-card activity-card-split">
           <h2 className="activity-card-title">Comprehension Check</h2>
           <p className="activity-card-desc">LLM-generated questions with explanatory feedback</p>
           <p className="activity-card-meta">
@@ -116,12 +140,26 @@ export function HomeScreen({
               ? `Attempts: ${comprehensionSummary.attemptCount} · Last score: ${comprehensionSummary.lastScore}%`
               : 'No attempts yet'}
           </p>
+          <div className="activity-card-actions">
+            <button
+              className="activity-card-action"
+              onClick={() => onSelectActivity('comprehension-check')}
+            >
+              Start Check
+            </button>
+            <button
+              className="activity-card-action"
+              onClick={() => setIsHistoryOpen((value) => !value)}
+            >
+              {isHistoryOpen ? 'Hide History' : 'Review History'}
+            </button>
+          </div>
           <div className="activity-card-modes">
             <span className="activity-card-mode">Factual</span>
             <span className="activity-card-mode">Inference</span>
             <span className="activity-card-mode">Evaluative</span>
           </div>
-        </button>
+        </div>
 
         <div className="activity-card activity-card-split">
           <h2 className="activity-card-title">Training</h2>
@@ -142,6 +180,52 @@ export function HomeScreen({
           </div>
         </div>
       </div>
+
+      {isHistoryOpen && (
+        <section className="comprehension-history-panel" aria-label="Comprehension history">
+          <div className="comprehension-history-header">
+            <h2>Comprehension History</h2>
+            <p>
+              Showing {attemptsToShow.length}
+              {comprehensionAttempts.length > MAX_HISTORY_ATTEMPTS
+                ? ` of ${comprehensionAttempts.length}`
+                : ''}
+              {' '}attempts
+            </p>
+          </div>
+
+          {attemptsToShow.length === 0 ? (
+            <p className="comprehension-history-empty">No comprehension attempts yet.</p>
+          ) : (
+            <div className="comprehension-history-list">
+              {attemptsToShow.map((attempt) => (
+                <article key={attempt.id} className="comprehension-history-item">
+                  <h3>{attempt.articleTitle}</h3>
+                  <p className="comprehension-history-meta">
+                    Score {attempt.overallScore}% · {attempt.questions.length} questions · {formatDuration(attempt.durationMs)} · {formatEntryPoint(attempt.entryPoint)}
+                  </p>
+                  <p className="comprehension-history-time">{formatAttemptDate(attempt.createdAt)}</p>
+
+                  <details className="comprehension-history-details">
+                    <summary>Review answers</summary>
+                    <div className="comprehension-history-answers">
+                      {attempt.questions.map((question, index) => (
+                        <section key={`${attempt.id}-${question.id}`} className="comprehension-history-answer">
+                          <h4>Q{index + 1} · {question.dimension} · {question.format}</h4>
+                          <p>{question.prompt}</p>
+                          <p><strong>Your answer:</strong> {question.userAnswer || '(no answer)'}</p>
+                          <p><strong>Feedback:</strong> {question.feedback}</p>
+                          <p><strong>Model answer:</strong> {question.modelAnswer}</p>
+                        </section>
+                      ))}
+                    </div>
+                  </details>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
