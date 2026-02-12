@@ -719,24 +719,30 @@ export function App() {
     navigate({ screen: 'active-training' });
   }, [navigate, syncWpmForActivity]);
 
-  const handleStartDaily = useCallback(async () => {
-    const today = getTodayUTC();
+  const launchFeaturedArticle = useCallback(async ({
+    fetchArticle,
+    source,
+    setStatus,
+    setError,
+    fallbackError,
+    today,
+  }: {
+    fetchArticle: () => Promise<{ title: string; content: string; url: string }>;
+    source: 'Wikipedia Daily' | 'Wikipedia Featured';
+    setStatus: (status: 'idle' | 'loading' | 'error') => void;
+    setError: (message: string | null) => void;
+    fallbackError: string;
+    today?: string;
+  }) => {
+    setStatus('loading');
+    setError(null);
 
-    // Check if we already fetched today's article
-    const cachedDaily = resolveDailyFeaturedArticle(today, loadDailyInfo(), articlesRef.current);
-    if (cachedDaily) {
-      applySessionLaunchPlan(planFeaturedArticleLaunch(cachedDaily));
-      return;
-    }
-
-    setDailyStatus('loading');
-    setDailyError(null);
     try {
-      const { title, content, url } = await fetchDailyArticle();
+      const { title, content, url } = await fetchArticle();
       const resultPlan = planFeaturedFetchResult({
         existingArticles: articlesRef.current,
         payload: { title, content, url },
-        source: 'Wikipedia Daily',
+        source,
         now: Date.now(),
         generateId,
         today,
@@ -751,40 +757,43 @@ export function App() {
       if (resultPlan.dailyInfo) {
         saveDailyInfo(resultPlan.dailyInfo.date, resultPlan.dailyInfo.articleId);
       }
-      setDailyStatus('idle');
+      setStatus('idle');
       applySessionLaunchPlan(planFeaturedArticleLaunch(article));
     } catch (err) {
-      setDailyStatus('error');
-      setDailyError(getFeaturedFetchErrorMessage(err, 'Failed to fetch daily article'));
+      setStatus('error');
+      setError(getFeaturedFetchErrorMessage(err, fallbackError));
     }
   }, [applySessionLaunchPlan]);
+
+  const handleStartDaily = useCallback(async () => {
+    const today = getTodayUTC();
+
+    // Check if we already fetched today's article
+    const cachedDaily = resolveDailyFeaturedArticle(today, loadDailyInfo(), articlesRef.current);
+    if (cachedDaily) {
+      applySessionLaunchPlan(planFeaturedArticleLaunch(cachedDaily));
+      return;
+    }
+
+    await launchFeaturedArticle({
+      fetchArticle: fetchDailyArticle,
+      source: 'Wikipedia Daily',
+      setStatus: setDailyStatus,
+      setError: setDailyError,
+      fallbackError: 'Failed to fetch daily article',
+      today,
+    });
+  }, [applySessionLaunchPlan, launchFeaturedArticle]);
 
   const handleStartRandom = useCallback(async () => {
-    setRandomStatus('loading');
-    setRandomError(null);
-    try {
-      const { title, content, url } = await fetchRandomFeaturedArticle();
-      const resultPlan = planFeaturedFetchResult({
-        existingArticles: articlesRef.current,
-        payload: { title, content, url },
-        source: 'Wikipedia Featured',
-        now: Date.now(),
-        generateId,
-      });
-      if (resultPlan.upserted.changed) {
-        articlesRef.current = resultPlan.upserted.articles;
-        setArticles(resultPlan.upserted.articles);
-        saveArticles(resultPlan.upserted.articles);
-      }
-      const article = resultPlan.upserted.article;
-
-      setRandomStatus('idle');
-      applySessionLaunchPlan(planFeaturedArticleLaunch(article));
-    } catch (err) {
-      setRandomStatus('error');
-      setRandomError(getFeaturedFetchErrorMessage(err, 'Failed to fetch article'));
-    }
-  }, [applySessionLaunchPlan]);
+    await launchFeaturedArticle({
+      fetchArticle: fetchRandomFeaturedArticle,
+      source: 'Wikipedia Featured',
+      setStatus: setRandomStatus,
+      setError: setRandomError,
+      fallbackError: 'Failed to fetch article',
+    });
+  }, [launchFeaturedArticle]);
 
   // Content browser → article selected → preview
   const handleContentBrowserSelectArticle = useCallback((article: Article) => {
