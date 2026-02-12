@@ -138,6 +138,63 @@ describe('ComprehensionCheck', () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('limits concurrent free-response scoring requests', async () => {
+    const generated: GeneratedComprehensionCheck = {
+      questions: [
+        { id: 'q1', dimension: 'factual', format: 'short-answer', prompt: 'Q1?', modelAnswer: 'A1' },
+        { id: 'q2', dimension: 'inference', format: 'short-answer', prompt: 'Q2?', modelAnswer: 'A2' },
+        { id: 'q3', dimension: 'structural', format: 'short-answer', prompt: 'Q3?', modelAnswer: 'A3' },
+        { id: 'q4', dimension: 'evaluative', format: 'short-answer', prompt: 'Q4?', modelAnswer: 'A4' },
+      ],
+    };
+
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+
+    const adapter: ComprehensionAdapter = {
+      generateCheck: vi.fn(async () => generated),
+      scoreAnswer: vi.fn(async () => {
+        activeRequests += 1;
+        maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        activeRequests -= 1;
+        return {
+          score: 2,
+          feedback: 'Scored',
+        };
+      }),
+    };
+
+    render(
+      <ComprehensionCheck
+        article={makeArticle()}
+        entryPoint="launcher"
+        adapter={adapter}
+        onClose={() => {}}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Question 1 of 4/i)).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Write a short answer'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(screen.getByPlaceholderText('Write a short answer'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(screen.getByPlaceholderText('Write a short answer'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(screen.getByPlaceholderText('Write a short answer'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Comprehension Check Results/i)).toBeTruthy();
+    });
+
+    expect(adapter.scoreAnswer).toHaveBeenCalledTimes(4);
+    expect(maxActiveRequests).toBeLessThanOrEqual(2);
+  });
+
   it('shows raw API-key errors and does not treat them as missing-key', async () => {
     const onOpenSettings = vi.fn();
     const adapter: ComprehensionAdapter = {

@@ -14,6 +14,7 @@ html, body, #root {
   --accent-hover:   #e0b45e;
   --border:         #3a3530;
   --success:        #7ab87a;
+  --error:          #e98585;
   --text-color-a:   #8ec8a0;
   --text-color-b:   #b4a0c4;
   --saccade-ovp-color: #e0b038;
@@ -34,6 +35,7 @@ html[data-theme='dark'] {
   --accent-hover:   #e0b45e;
   --border:         #3a3530;
   --success:        #7ab87a;
+  --error:          #e98585;
   --text-color-a:   #8ec8a0;
   --text-color-b:   #b4a0c4;
   --saccade-ovp-color: #e0b038;
@@ -53,6 +55,7 @@ html[data-theme='light'] {
   --accent-hover:   #ca8630;
   --border:         #d0c2ad;
   --success:        #2f8f4f;
+  --error:          #b24a40;
   --text-color-a:   #2d7f61;
   --text-color-b:   #6c5897;
   --saccade-ovp-color: #84470f;
@@ -2962,11 +2965,11 @@ button {
 }
 
 .comprehension-phase.open {
-  border-color: rgba(65, 184, 131, 0.5);
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
 }
 
 .comprehension-phase.closed {
-  border-color: rgba(229, 145, 67, 0.6);
+  border-color: color-mix(in srgb, var(--error) 60%, var(--border));
 }
 
 .comprehension-passage {
@@ -3055,7 +3058,7 @@ button {
 }
 
 .comprehension-chip-warning {
-  border-color: rgba(229, 145, 67, 0.55);
+  border-color: color-mix(in srgb, var(--error) 60%, var(--border));
 }
 
 .comprehension-results-controls {
@@ -3101,15 +3104,15 @@ button {
 }
 
 .comprehension-result-status.correct {
-  border-color: rgba(65, 184, 131, 0.5);
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
 }
 
 .comprehension-result-status.partial {
-  border-color: rgba(212, 160, 74, 0.6);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
 }
 
 .comprehension-result-status.incorrect {
-  border-color: rgba(229, 145, 67, 0.6);
+  border-color: color-mix(in srgb, var(--error) 60%, var(--border));
 }
 
 .comprehension-result-prompt {
@@ -3130,13 +3133,13 @@ button {
 }
 
 .settings-success {
-  color: #41b883;
+  color: var(--success);
   font-size: 0.88rem;
   margin-bottom: 0.45rem;
 }
 
 .settings-error {
-  color: #e98585;
+  color: var(--error);
   font-size: 0.88rem;
   margin-bottom: 0.45rem;
 }

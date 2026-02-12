@@ -13,6 +13,7 @@ import { PredictionStats } from './PredictionStats';
 import { RecallReader } from './RecallReader';
 import { TrainingReader } from './TrainingReader';
 import { ComprehensionCheck } from './ComprehensionCheck';
+import { ComprehensionCheckBoundary } from './ComprehensionCheckBoundary';
 import { useRSVP } from '../hooks/useRSVP';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { calculateRemainingTime, formatTime, calculateProgress } from '../lib/rsvp';
@@ -487,8 +488,9 @@ export function App() {
   }, []);
 
   const handleComprehensionApiKeyChange = useCallback(async (apiKey: string) => {
-    await savePreferredComprehensionApiKey(apiKey);
-    setComprehensionApiKey(apiKey.trim());
+    const normalizedApiKey = apiKey.trim();
+    await savePreferredComprehensionApiKey(normalizedApiKey);
+    setComprehensionApiKey(normalizedApiKey);
     setComprehensionApiKeyStorageMode(await getComprehensionApiKeyStorageMode());
   }, []);
 
@@ -1310,14 +1312,16 @@ export function App() {
         )}
 
         {viewState.screen === 'active-comprehension' && (
-          <ComprehensionCheck
-            article={viewState.article}
-            entryPoint={viewState.entryPoint}
-            adapter={comprehensionAdapter}
-            onClose={closeActiveComprehension}
-            onOpenSettings={() => navigate({ screen: 'settings' })}
-            onAttemptSaved={handleComprehensionAttemptSaved}
-          />
+          <ComprehensionCheckBoundary onClose={closeActiveComprehension}>
+            <ComprehensionCheck
+              article={viewState.article}
+              entryPoint={viewState.entryPoint}
+              adapter={comprehensionAdapter}
+              onClose={closeActiveComprehension}
+              onOpenSettings={() => navigate({ screen: 'settings' })}
+              onAttemptSaved={handleComprehensionAttemptSaved}
+            />
+          </ComprehensionCheckBoundary>
         )}
 
         {/* Bookmarklet import */}

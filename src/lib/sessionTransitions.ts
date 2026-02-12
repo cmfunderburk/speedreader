@@ -114,10 +114,6 @@ export function planStartReadingFromPreview(
     };
   }
 
-  if (activity === 'comprehension-check') {
-    return null;
-  }
-
   return null;
 }
 

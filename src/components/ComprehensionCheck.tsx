@@ -25,6 +25,7 @@ interface CheckResults {
 
 type ReviewDepth = 'quick' | 'standard' | 'deep';
 type ResultFilter = 'all' | 'needs-review';
+const FREE_RESPONSE_SCORE_CONCURRENCY = 2;
 
 const MISSING_API_KEY_ERROR = 'Comprehension check requires an API key';
 const MISSING_API_KEY_HELP_TEXT = 'Comprehension Check requires an API key. Add your key in Settings and retry.';
@@ -164,7 +165,7 @@ export function ComprehensionCheck({
     if (orderedQuestions.length === 0) return;
     setStatus('submitting');
 
-    const scoredQuestions = await Promise.all(orderedQuestions.map(async (question): Promise<ComprehensionQuestionResult> => {
+    const scoreQuestion = async (question: GeneratedComprehensionQuestion): Promise<ComprehensionQuestionResult> => {
       const response = responses[question.id] ?? '';
       const userAnswer = formatUserAnswer(question, response);
       const autoScore = scoreAutoQuestion(question, response);
@@ -220,7 +221,19 @@ export function ComprehensionCheck({
           feedback: 'Unable to score this answer automatically. Review the model answer below.',
         };
       }
-    }));
+    };
+
+    const scoredQuestions = new Array<ComprehensionQuestionResult>(orderedQuestions.length);
+    let cursor = 0;
+    const workerCount = Math.min(FREE_RESPONSE_SCORE_CONCURRENCY, orderedQuestions.length);
+    const runWorker = async () => {
+      while (cursor < orderedQuestions.length) {
+        const index = cursor;
+        cursor += 1;
+        scoredQuestions[index] = await scoreQuestion(orderedQuestions[index]);
+      }
+    };
+    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
     const totalScore = scoredQuestions.reduce((sum, question) => sum + question.score, 0);
     const maxScore = scoredQuestions.length * 3;
