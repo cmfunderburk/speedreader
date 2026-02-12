@@ -15,7 +15,7 @@ import {
   loadTrainingScaffold,
   saveTrainingScaffold,
 } from '../lib/storage';
-import { DRILL_WPM_STEP, adjustDrillDifficulty, getDrillRound } from '../lib/trainingDrill';
+import { DRILL_WPM_STEP, getDrillRound } from '../lib/trainingDrill';
 import { planTrainingContinue, planTrainingStart } from '../lib/trainingPhase';
 import {
   applyStatsDelta,
@@ -23,10 +23,13 @@ import {
   collectRemainingPreviewWordKeys,
   consumeRecallTokens,
   makeRecallWordKey,
-  planScaffoldRecallTransition,
+  parseNoScaffoldRecallInput,
+  planScaffoldMissContinue,
+  planScaffoldRecallSubmission,
 } from '../lib/trainingRecall';
 import { planTrainingReadingStart, planTrainingReadingStep } from '../lib/trainingReading';
-import { adjustArticleTrainingWpm, computeTrainingScore, finalizeTrainingStats } from '../lib/trainingScoring';
+import type { TrainingFinalWord } from '../lib/trainingScoring';
+import { planFinishRecallPhase } from '../lib/trainingFeedback';
 import type { TrainingHistory, DrillState } from '../lib/storage';
 import { SaccadeLineComponent } from './SaccadeReader';
 
@@ -405,13 +408,26 @@ export function TrainingReader({
   }, [drillPreviewWordKeys, wpm]);
 
   // --- Recall handlers ---
-  const finishRecallPhase = useCallback((stats: ParagraphStats, finalWord: { known: boolean; exact: boolean; isDetail: boolean } | null) => {
-    const finalStats = finalizeTrainingStats(stats, finalWord);
+  const finishRecallPhase = useCallback((stats: ParagraphStats, finalWord: TrainingFinalWord | null) => {
+    const finishPlan = planFinishRecallPhase({
+      stats,
+      finalWord,
+      isDrill,
+      sentenceMode,
+      currentSentenceIndex,
+      sentenceCount: sentenceChunks.length,
+      includeDetailsInScore: scoreDetails,
+      currentParagraphIndex,
+      wpm,
+      autoAdjustDifficulty,
+      drillMinWpm,
+      drillMaxWpm,
+      hasRepeatedParagraph: sessionHistory.some((result) => result.paragraphIndex === currentParagraphIndex),
+    });
 
-    // Sentence mode: if more sentences remain, advance and loop back to reading (article mode only)
-    if (!isDrill && sentenceMode && currentSentenceIndex < sentenceChunks.length - 1) {
-      setParagraphStats(finalStats);
-      setCurrentSentenceIndex(prev => prev + 1);
+    if (finishPlan.type === 'advance-sentence') {
+      setParagraphStats(finishPlan.finalStats);
+      setCurrentSentenceIndex(finishPlan.nextSentenceIndex);
       setRecallInput('');
       setRecallWordIndex(0);
       setCompletedWords(new Map());
@@ -427,56 +443,66 @@ export function TrainingReader({
       return;
     }
 
-    const score = computeTrainingScore(finalStats, scoreDetails);
     // Snapshot the exact just-completed text so feedback remains stable
     // even if adaptive drill settings change before render.
     setFeedbackText(currentText);
 
-    if (isDrill) {
+    if (finishPlan.mode === 'drill') {
       // Random drill: track stats, apply difficulty ladder
       setDrillRoundsCompleted(n => n + 1);
-      setDrillScoreSum(s => s + score.scoreNorm);
-      setRollingScores(prev => [...prev, score.scoreNorm]);
+      setDrillScoreSum(s => s + finishPlan.score.scoreNorm);
+      setRollingScores(prev => [...prev, finishPlan.score.scoreNorm]);
 
-      if (autoAdjustDifficulty && (score.scorePercent < 90 || score.scorePercent >= 95)) {
-        const adjustment = adjustDrillDifficulty(wpm, drillMinWpm, drillMaxWpm, score.scorePercent >= 95);
-        lastDrillAdjRef.current = { wpmDelta: adjustment.wpm - wpm };
-        if (adjustment.wpm !== wpm) { setWpm(adjustment.wpm); onWpmChange(adjustment.wpm); }
-      } else {
-        lastDrillAdjRef.current = { wpmDelta: 0 };
+      lastDrillAdjRef.current = { wpmDelta: finishPlan.wpmDelta };
+      if (finishPlan.shouldApplyWpmChange) {
+        setWpm(finishPlan.nextWpm);
+        onWpmChange(finishPlan.nextWpm);
       }
     } else {
       // Article mode: persist to training history
-      const result: TrainingParagraphResult = {
-        paragraphIndex: currentParagraphIndex,
-        score: score.scoreNorm,
-        wpm,
-        repeated: sessionHistory.some(r => r.paragraphIndex === currentParagraphIndex),
-        wordCount: finalStats.totalWords,
-        exactMatches: finalStats.exactMatches,
-      };
-
-      setSessionHistory(prev => [...prev, result]);
+      setSessionHistory(prev => [...prev, finishPlan.sessionResult]);
 
       setTrainingHistory(prev => {
-        const updated = { ...prev, [currentParagraphIndex]: { score: score.scoreNorm, wpm, timestamp: Date.now() } };
+        const updated = {
+          ...prev,
+          [finishPlan.historyUpdate.paragraphIndex]: {
+            score: finishPlan.historyUpdate.score,
+            wpm: finishPlan.historyUpdate.wpm,
+            timestamp: Date.now(),
+          },
+        };
         if (articleId) saveTrainingHistory(articleId, updated);
         return updated;
       });
 
       // Article mode WPM adjustment
-      const newWpm = adjustArticleTrainingWpm(wpm, score.scorePercent);
-      setWpm(newWpm);
-      onWpmChange(newWpm);
+      setWpm(finishPlan.nextWpm);
+      onWpmChange(finishPlan.nextWpm);
     }
 
-    lastDetailCountRef.current = finalStats.detailTotal;
+    lastDetailCountRef.current = finishPlan.lastDetailCount;
     setLastPreviewPenaltyCount(drillForfeitedWordKeys.size);
     setDrillForfeitedWordKeys(new Set());
     setDrillPreviewWordKeys([]);
     setDrillPreviewVisibleCount(0);
     setPhase('feedback');
-  }, [isDrill, currentParagraphIndex, wpm, autoAdjustDifficulty, drillMinWpm, drillMaxWpm, sessionHistory, onWpmChange, articleId, sentenceMode, currentSentenceIndex, sentenceChunks.length, scoreDetails, currentText, drillForfeitedWordKeys]);
+  }, [
+    articleId,
+    autoAdjustDifficulty,
+    currentParagraphIndex,
+    currentSentenceIndex,
+    currentText,
+    drillForfeitedWordKeys,
+    drillMaxWpm,
+    drillMinWpm,
+    isDrill,
+    onWpmChange,
+    scoreDetails,
+    sentenceChunks.length,
+    sentenceMode,
+    sessionHistory,
+    wpm,
+  ]);
 
   const processRecallTokens = useCallback((tokens: string[]) => {
     if (tokens.length === 0) return false;
@@ -524,10 +550,7 @@ export function TrainingReader({
     }
 
     // No-scaffold mode: consume complete space-delimited tokens immediately.
-    const endsWithSpace = /\s$/.test(value);
-    const parts = value.split(/\s+/);
-    const completeTokens = (endsWithSpace ? parts : parts.slice(0, -1)).filter(Boolean);
-    const pendingToken = endsWithSpace ? '' : (parts[parts.length - 1] || '');
+    const { completeTokens, pendingToken } = parseNoScaffoldRecallInput(value);
 
     if (completeTokens.length > 0) {
       const finished = processRecallTokens(completeTokens);
@@ -553,29 +576,24 @@ export function TrainingReader({
       return;
     }
 
-    const actual = currentRecallChunk.text;
-    const known = isWordKnown(recallInput, actual);
-    const exact = isExactMatch(recallInput, actual);
-    const detail = isChunkDetail(recallWordIndex);
-
-    const key = makeRecallWordKey(
-      currentRecallChunk.saccade!.lineIndex,
-      currentRecallChunk.saccade!.startChar
-    );
-
-    const transitionPlan = planScaffoldRecallTransition({
-      isKnown: known,
-      isExact: exact,
-      isDetail: detail,
+    const transitionPlan = planScaffoldRecallSubmission({
+      predicted: recallInput.trim(),
+      chunk: currentRecallChunk,
       isDrill,
       currentIndex: recallWordIndex,
       chunkCount: recallData.chunks.length,
+      isDetail: isChunkDetail(recallWordIndex),
+      isWordKnown,
+      isExactMatch,
     });
 
-    setCompletedWords(prev => new Map(prev).set(key, { text: actual, correct: known }));
+    setCompletedWords(prev => new Map(prev).set(transitionPlan.completedWord.key, {
+      text: transitionPlan.completedWord.text,
+      correct: transitionPlan.completedWord.correct,
+    }));
 
     if (transitionPlan.type === 'show-miss') {
-      setLastMissResult({ predicted: recallInput.trim(), actual });
+      setLastMissResult(transitionPlan.missResult);
       setShowingMiss(true);
       return;
     }
@@ -586,11 +604,10 @@ export function TrainingReader({
 
     if (transitionPlan.type === 'finish') {
       finishRecallPhase(paragraphStats, transitionPlan.finalWord);
-      return;
+    } else {
+      setParagraphStats(prev => applyStatsDelta(prev, transitionPlan.statsDelta));
+      setRecallWordIndex(transitionPlan.nextIndex);
     }
-
-    setParagraphStats(prev => applyStatsDelta(prev, transitionPlan.statsDelta));
-    setRecallWordIndex(transitionPlan.nextIndex);
   }, [
     recallInput,
     currentRecallChunk,
@@ -648,19 +665,15 @@ export function TrainingReader({
     setLastMissResult(null);
     setRecallInput('');
 
-    const detail = isChunkDetail(recallWordIndex);
-    const transitionPlan = planScaffoldRecallTransition({
-      isKnown: false,
-      isExact: false,
-      isDetail: detail,
-      isDrill: true,
+    const transitionPlan = planScaffoldMissContinue({
       currentIndex: recallWordIndex,
       chunkCount: recallData.chunks.length,
+      isDetail: isChunkDetail(recallWordIndex),
     });
 
     if (transitionPlan.type === 'finish') {
       finishRecallPhase(paragraphStats, transitionPlan.finalWord);
-    } else if (transitionPlan.type === 'advance') {
+    } else {
       setParagraphStats(prev => applyStatsDelta(prev, transitionPlan.statsDelta));
       setRecallWordIndex(transitionPlan.nextIndex);
     }

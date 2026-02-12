@@ -20,6 +20,17 @@ interface PrepareFeaturedArticleUpsertArgs {
   generateId: () => string;
 }
 
+interface PlanFeaturedFetchResultArgs extends PrepareFeaturedArticleUpsertArgs {
+  today?: string;
+}
+
+type FeaturedArticleUpsertResult = ReturnType<typeof prepareFeaturedArticleUpsert>;
+
+export interface FeaturedFetchResultPlan {
+  upserted: FeaturedArticleUpsertResult;
+  dailyInfo: DailyArticleInfo | null;
+}
+
 export function resolveDailyFeaturedArticle(
   today: string,
   dailyInfo: DailyArticleInfo | null,
@@ -46,4 +57,31 @@ export function prepareFeaturedArticleUpsert({
     now,
     generateId,
   });
+}
+
+export function planFeaturedFetchResult({
+  existingArticles,
+  payload,
+  source,
+  now,
+  generateId,
+  today,
+}: PlanFeaturedFetchResultArgs): FeaturedFetchResultPlan {
+  const upserted = prepareFeaturedArticleUpsert({
+    existingArticles,
+    payload,
+    source,
+    now,
+    generateId,
+  });
+
+  const dailyInfo = source === 'Wikipedia Daily' && today
+    ? { date: today, articleId: upserted.article.id }
+    : null;
+
+  return { upserted, dailyInfo };
+}
+
+export function getFeaturedFetchErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }

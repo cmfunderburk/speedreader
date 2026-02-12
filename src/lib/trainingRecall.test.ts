@@ -4,6 +4,9 @@ import {
   buildRemainingMissStats,
   collectRemainingPreviewWordKeys,
   consumeRecallTokens,
+  parseNoScaffoldRecallInput,
+  planScaffoldMissContinue,
+  planScaffoldRecallSubmission,
   planScaffoldRecallTransition,
 } from './trainingRecall';
 
@@ -80,6 +83,95 @@ describe('trainingRecall', () => {
     })).toEqual({
       type: 'finish',
       finalWord: { known: false, exact: false, isDetail: false },
+    });
+  });
+
+  it('plans scaffold submission result including completed word and miss details', () => {
+    const plan = planScaffoldRecallSubmission({
+      predicted: 'alpah',
+      chunk: { text: 'alpha', saccade: { lineIndex: 2, startChar: 5 } },
+      isDrill: false,
+      currentIndex: 1,
+      chunkCount: 3,
+      isDetail: false,
+      isWordKnown: () => false,
+      isExactMatch: () => false,
+    });
+
+    expect(plan).toEqual({
+      type: 'show-miss',
+      completedWord: { key: '0:2:5', text: 'alpha', correct: false },
+      missResult: { predicted: 'alpah', actual: 'alpha' },
+    });
+  });
+
+  it('plans scaffold submission advance with fallback key for non-saccade chunk', () => {
+    const plan = planScaffoldRecallSubmission({
+      predicted: 'beta',
+      chunk: { text: 'beta' },
+      isDrill: true,
+      currentIndex: 4,
+      chunkCount: 6,
+      isDetail: true,
+      isWordKnown: () => true,
+      isExactMatch: () => true,
+    });
+
+    expect(plan).toEqual({
+      type: 'advance',
+      completedWord: { key: 'fallback:4', text: 'beta', correct: true },
+      nextIndex: 5,
+      statsDelta: {
+        totalWords: 1,
+        exactMatches: 1,
+        knownWords: 1,
+        detailTotal: 1,
+        detailKnown: 1,
+      },
+    });
+  });
+
+  it('plans drill miss-continue transitions', () => {
+    expect(planScaffoldMissContinue({
+      currentIndex: 1,
+      chunkCount: 3,
+      isDetail: true,
+    })).toEqual({
+      type: 'advance',
+      nextIndex: 2,
+      statsDelta: {
+        totalWords: 1,
+        exactMatches: 0,
+        knownWords: 0,
+        detailTotal: 1,
+        detailKnown: 0,
+      },
+    });
+
+    expect(planScaffoldMissContinue({
+      currentIndex: 2,
+      chunkCount: 3,
+      isDetail: false,
+    })).toEqual({
+      type: 'finish',
+      finalWord: { known: false, exact: false, isDetail: false },
+    });
+  });
+
+  it('parses no-scaffold recall input into complete and pending tokens', () => {
+    expect(parseNoScaffoldRecallInput('alpha beta ')).toEqual({
+      completeTokens: ['alpha', 'beta'],
+      pendingToken: '',
+    });
+
+    expect(parseNoScaffoldRecallInput('alpha beta gam')).toEqual({
+      completeTokens: ['alpha', 'beta'],
+      pendingToken: 'gam',
+    });
+
+    expect(parseNoScaffoldRecallInput('   ')).toEqual({
+      completeTokens: [],
+      pendingToken: '',
     });
   });
 

@@ -1,4 +1,4 @@
-import { useState, useReducer, useCallback, useMemo, useEffect } from 'react';
+import { useState, useReducer, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Reader } from './Reader';
 import { ReaderControls } from './ReaderControls';
 import { ProgressBar } from './ProgressBar';
@@ -59,7 +59,6 @@ import type {
 import { PREDICTION_LINE_WIDTHS } from '../types';
 import { measureTextMetrics } from '../lib/textMetrics';
 import { formatBookName } from '../lib/libraryFormatting';
-import { isSentenceBoundaryChunk } from '../lib/predictionPreview';
 import { appViewStateReducer, getInitialViewState, viewStateToAction } from '../lib/appViewState';
 import {
   planCloseActiveExercise,
@@ -79,8 +78,23 @@ import {
 import type { ViewState } from '../lib/appViewState';
 import { planEscapeAction } from '../lib/appKeyboard';
 import { buildPassageReviewLaunchPlan } from '../lib/passageReviewLaunch';
-import { prepareFeaturedArticleUpsert, resolveDailyFeaturedArticle } from '../lib/featuredArticleLaunch';
+import {
+  getFeaturedFetchErrorMessage,
+  planFeaturedFetchResult,
+  resolveDailyFeaturedArticle,
+} from '../lib/featuredArticleLaunch';
 import { buildPassageReviewQueue } from '../lib/passageQueue';
+import {
+  normalizeCaptureLineText,
+  planLastLinesCapture,
+  planParagraphCapture,
+  planSentenceCapture,
+} from '../lib/passageCapture';
+import {
+  appendFeed,
+  mergeFeedArticles,
+  updateFeedLastFetched,
+} from '../lib/appFeedTransitions';
 
 const PASSAGE_CAPTURE_LAST_LINE_COUNT = 3;
 const MIN_WPM = 100;
@@ -99,10 +113,6 @@ function resolveThemePreference(themePreference: ThemePreference, systemTheme: '
 
 function clampWpm(value: number): number {
   return Math.max(MIN_WPM, Math.min(MAX_WPM, Math.round(value)));
-}
-
-function normalizeCaptureLineText(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
 }
 
 function captureKindLabel(captureKind: PassageCaptureKind): string {
@@ -191,6 +201,7 @@ export function App() {
   }, []);
 
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
+  const articlesRef = useRef<Article[]>(articles);
   const [viewState, dispatchViewState] = useReducer(
     appViewStateReducer,
     window.location.search,
@@ -232,6 +243,10 @@ export function App() {
     document.documentElement.setAttribute('data-theme', resolvedTheme);
     document.documentElement.style.colorScheme = resolvedTheme;
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    articlesRef.current = articles;
+  }, [articles]);
 
   const rsvp = useRSVP({
     initialWpm: settings.wpmByActivity['paced-reading'],
@@ -367,21 +382,21 @@ export function App() {
     setIsLoadingFeed(true);
     try {
       const { feed, articles: feedArticles } = await fetchFeed(url);
-      const updatedFeeds = [...feeds, feed];
-      setFeeds(updatedFeeds);
-      saveFeeds(updatedFeeds);
-
-      const existingUrls = new Set(articles.map(a => a.url).filter(Boolean));
-      const newArticles = feedArticles.filter(a => !a.url || !existingUrls.has(a.url));
-      if (newArticles.length > 0) {
-        const updatedArticles = [...articles, ...newArticles];
-        setArticles(updatedArticles);
-        saveArticles(updatedArticles);
-      }
+      setFeeds((prevFeeds) => {
+        const nextFeeds = appendFeed(prevFeeds, feed);
+        saveFeeds(nextFeeds);
+        return nextFeeds;
+      });
+      setArticles((prevArticles) => {
+        const articlePlan = mergeFeedArticles(prevArticles, feedArticles);
+        if (articlePlan.addedArticleCount === 0) return prevArticles;
+        saveArticles(articlePlan.nextArticles);
+        return articlePlan.nextArticles;
+      });
     } finally {
       setIsLoadingFeed(false);
     }
-  }, [feeds, articles]);
+  }, []);
 
   const handleRemoveFeed = useCallback((id: string) => {
     const updated = feeds.filter(f => f.id !== id);
@@ -393,22 +408,22 @@ export function App() {
     setIsLoadingFeed(true);
     try {
       const { articles: feedArticles } = await fetchFeed(feed.url);
-      const existingUrls = new Set(articles.map(a => a.url).filter(Boolean));
-      const newArticles = feedArticles.filter(a => !a.url || !existingUrls.has(a.url));
-      if (newArticles.length > 0) {
-        const updatedArticles = [...articles, ...newArticles];
-        setArticles(updatedArticles);
-        saveArticles(updatedArticles);
-      }
-      const updatedFeeds = feeds.map(f =>
-        f.id === feed.id ? { ...f, lastFetched: Date.now() } : f
-      );
-      setFeeds(updatedFeeds);
-      saveFeeds(updatedFeeds);
+      setArticles((prevArticles) => {
+        const articlePlan = mergeFeedArticles(prevArticles, feedArticles);
+        if (articlePlan.addedArticleCount === 0) return prevArticles;
+        saveArticles(articlePlan.nextArticles);
+        return articlePlan.nextArticles;
+      });
+      setFeeds((prevFeeds) => {
+        const feedPlan = updateFeedLastFetched(prevFeeds, feed.id, Date.now());
+        if (!feedPlan.changed) return prevFeeds;
+        saveFeeds(feedPlan.nextFeeds);
+        return feedPlan.nextFeeds;
+      });
     } finally {
       setIsLoadingFeed(false);
     }
-  }, [feeds, articles]);
+  }, []);
 
   // --- Settings handlers (unchanged) ---
 
@@ -536,22 +551,6 @@ export function App() {
     };
   }, [flatSaccadeLines, rsvp.article, rsvp.currentChunk, rsvp.currentChunkIndex, rsvp.displayMode]);
 
-  const getContiguousNonBlankLineRange = useCallback((centerGlobalLineIndex: number): [number, number] | null => {
-    if (centerGlobalLineIndex < 0 || centerGlobalLineIndex >= flatSaccadeLines.length) return null;
-    const centerLine = flatSaccadeLines[centerGlobalLineIndex];
-    if (centerLine.type === 'blank') return null;
-
-    let start = centerGlobalLineIndex;
-    let end = centerGlobalLineIndex;
-    while (start > 0 && flatSaccadeLines[start - 1].type !== 'blank') {
-      start -= 1;
-    }
-    while (end < flatSaccadeLines.length - 1 && flatSaccadeLines[end + 1].type !== 'blank') {
-      end += 1;
-    }
-    return [start, end];
-  }, [flatSaccadeLines]);
-
   const capturePassageFromLines = useCallback((
     captureKind: PassageCaptureKind,
     selectedLines: Array<{
@@ -608,94 +607,24 @@ export function App() {
   const handleCaptureSentence = useCallback(() => {
     const ctx = currentSaccadeCaptureContext;
     if (!ctx) return;
-
-    const paragraphRange = getContiguousNonBlankLineRange(ctx.globalLineIndex);
-    if (!paragraphRange) return;
-    const [paraStart, paraEnd] = paragraphRange;
-    const paragraphRefs = flatSaccadeLines.slice(paraStart, paraEnd + 1)
-      .filter((line) => line.type !== 'blank');
-    if (paragraphRefs.length === 0) return;
-
-    let cursor = 0;
-    const segments = paragraphRefs.map((line) => {
-      const text = normalizeCaptureLineText(line.text);
-      const start = cursor;
-      const end = start + text.length;
-      cursor = end + 1;
-      return { ...line, text, start, end };
-    }).filter((line) => line.text.length > 0);
-    if (segments.length === 0) return;
-
-    const paragraphText = segments.map((line) => line.text).join(' ');
-    const currentSegment = segments.find((line) =>
-      line.pageIndex === ctx.pageIndex && line.lineIndex === ctx.lineIndex
-    ) ?? segments[Math.floor(segments.length / 2)];
-    const anchorChar = currentSegment.start + Math.max(0, Math.floor((currentSegment.end - currentSegment.start) / 2));
-
-    const tokenMatches = [...paragraphText.matchAll(/\S+/g)].map((match) => ({
-      text: match[0],
-      start: match.index ?? 0,
-      end: (match.index ?? 0) + match[0].length,
-    }));
-    if (tokenMatches.length === 0) return;
-
-    let anchorTokenIndex = tokenMatches.findIndex((token) => anchorChar >= token.start && anchorChar < token.end);
-    if (anchorTokenIndex < 0) {
-      anchorTokenIndex = tokenMatches.findIndex((token) => token.start >= anchorChar);
-      if (anchorTokenIndex < 0) anchorTokenIndex = tokenMatches.length - 1;
-    }
-
-    const sentenceChunks = tokenMatches.map((token) => ({
-      text: token.text,
-      wordCount: 1,
-      orpIndex: 0,
-    }));
-
-    let sentenceStartTokenIndex = 0;
-    for (let i = anchorTokenIndex - 1; i >= 0; i--) {
-      if (isSentenceBoundaryChunk(sentenceChunks, i)) {
-        sentenceStartTokenIndex = i + 1;
-        break;
-      }
-    }
-
-    let sentenceEndTokenIndex = tokenMatches.length - 1;
-    for (let i = anchorTokenIndex; i < tokenMatches.length; i++) {
-      if (isSentenceBoundaryChunk(sentenceChunks, i)) {
-        sentenceEndTokenIndex = i;
-        break;
-      }
-    }
-
-    const sentenceStartChar = tokenMatches[sentenceStartTokenIndex].start;
-    const sentenceEndChar = tokenMatches[sentenceEndTokenIndex].end;
-    const sentenceText = paragraphText.slice(sentenceStartChar, sentenceEndChar).trim();
-    const sentenceLines = segments.filter((line) => line.end > sentenceStartChar && line.start < sentenceEndChar);
-    capturePassageFromLines('sentence', sentenceLines, sentenceText);
-  }, [capturePassageFromLines, currentSaccadeCaptureContext, flatSaccadeLines, getContiguousNonBlankLineRange]);
+    const sentencePlan = planSentenceCapture(flatSaccadeLines, ctx.globalLineIndex);
+    if (!sentencePlan) return;
+    capturePassageFromLines('sentence', sentencePlan.sentenceLines, sentencePlan.sentenceText);
+  }, [capturePassageFromLines, currentSaccadeCaptureContext, flatSaccadeLines]);
 
   const handleCaptureParagraph = useCallback(() => {
     const ctx = currentSaccadeCaptureContext;
     if (!ctx) return;
-    const paragraphRange = getContiguousNonBlankLineRange(ctx.globalLineIndex);
-    if (!paragraphRange) return;
-    const [start, end] = paragraphRange;
-    const paragraphLines = flatSaccadeLines.slice(start, end + 1).filter((line) => line.type !== 'blank');
+    const paragraphLines = planParagraphCapture(flatSaccadeLines, ctx.globalLineIndex);
+    if (!paragraphLines) return;
     capturePassageFromLines('paragraph', paragraphLines);
-  }, [capturePassageFromLines, currentSaccadeCaptureContext, flatSaccadeLines, getContiguousNonBlankLineRange]);
+  }, [capturePassageFromLines, currentSaccadeCaptureContext, flatSaccadeLines]);
 
   const handleCaptureLastLines = useCallback(() => {
     const ctx = currentSaccadeCaptureContext;
     if (!ctx) return;
-    const selected: typeof flatSaccadeLines = [];
-    for (let i = ctx.globalLineIndex; i >= 0 && selected.length < PASSAGE_CAPTURE_LAST_LINE_COUNT; i--) {
-      const line = flatSaccadeLines[i];
-      if (line.pageIndex !== ctx.pageIndex) break;
-      if (line.type === 'blank') continue;
-      if (normalizeCaptureLineText(line.text).length === 0) continue;
-      selected.push(line);
-    }
-    capturePassageFromLines('last-lines', selected.reverse());
+    const selected = planLastLinesCapture(flatSaccadeLines, ctx.globalLineIndex, PASSAGE_CAPTURE_LAST_LINE_COUNT);
+    capturePassageFromLines('last-lines', selected);
   }, [capturePassageFromLines, currentSaccadeCaptureContext, flatSaccadeLines]);
 
   const reviewQueue = useMemo(() => {
@@ -794,7 +723,7 @@ export function App() {
     const today = getTodayUTC();
 
     // Check if we already fetched today's article
-    const cachedDaily = resolveDailyFeaturedArticle(today, loadDailyInfo(), articles);
+    const cachedDaily = resolveDailyFeaturedArticle(today, loadDailyInfo(), articlesRef.current);
     if (cachedDaily) {
       applySessionLaunchPlan(planFeaturedArticleLaunch(cachedDaily));
       return;
@@ -804,53 +733,58 @@ export function App() {
     setDailyError(null);
     try {
       const { title, content, url } = await fetchDailyArticle();
-      const upserted = prepareFeaturedArticleUpsert({
-        existingArticles: articles,
+      const resultPlan = planFeaturedFetchResult({
+        existingArticles: articlesRef.current,
         payload: { title, content, url },
         source: 'Wikipedia Daily',
         now: Date.now(),
         generateId,
+        today,
       });
-      if (upserted.changed) {
-        setArticles(upserted.articles);
-        saveArticles(upserted.articles);
+      if (resultPlan.upserted.changed) {
+        articlesRef.current = resultPlan.upserted.articles;
+        setArticles(resultPlan.upserted.articles);
+        saveArticles(resultPlan.upserted.articles);
       }
-      const article = upserted.article;
+      const article = resultPlan.upserted.article;
 
-      saveDailyInfo(today, article.id);
+      if (resultPlan.dailyInfo) {
+        saveDailyInfo(resultPlan.dailyInfo.date, resultPlan.dailyInfo.articleId);
+      }
       setDailyStatus('idle');
       applySessionLaunchPlan(planFeaturedArticleLaunch(article));
     } catch (err) {
       setDailyStatus('error');
-      setDailyError(err instanceof Error ? err.message : 'Failed to fetch daily article');
+      setDailyError(getFeaturedFetchErrorMessage(err, 'Failed to fetch daily article'));
     }
-  }, [applySessionLaunchPlan, articles]);
+  }, [applySessionLaunchPlan]);
 
   const handleStartRandom = useCallback(async () => {
     setRandomStatus('loading');
     setRandomError(null);
     try {
       const { title, content, url } = await fetchRandomFeaturedArticle();
-      const upserted = prepareFeaturedArticleUpsert({
-        existingArticles: articles,
+      const resultPlan = planFeaturedFetchResult({
+        existingArticles: articlesRef.current,
         payload: { title, content, url },
         source: 'Wikipedia Featured',
         now: Date.now(),
         generateId,
       });
-      if (upserted.changed) {
-        setArticles(upserted.articles);
-        saveArticles(upserted.articles);
+      if (resultPlan.upserted.changed) {
+        articlesRef.current = resultPlan.upserted.articles;
+        setArticles(resultPlan.upserted.articles);
+        saveArticles(resultPlan.upserted.articles);
       }
-      const article = upserted.article;
+      const article = resultPlan.upserted.article;
 
       setRandomStatus('idle');
       applySessionLaunchPlan(planFeaturedArticleLaunch(article));
     } catch (err) {
       setRandomStatus('error');
-      setRandomError(err instanceof Error ? err.message : 'Failed to fetch article');
+      setRandomError(getFeaturedFetchErrorMessage(err, 'Failed to fetch article'));
     }
-  }, [applySessionLaunchPlan, articles]);
+  }, [applySessionLaunchPlan]);
 
   // Content browser → article selected → preview
   const handleContentBrowserSelectArticle = useCallback((article: Article) => {

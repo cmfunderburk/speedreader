@@ -43,13 +43,26 @@ Exit criteria:
 - [x] Extract `App` featured daily/random launch cache+upsert flow into shared helper logic.
 - [x] Extract `App` passage-review queue ordering logic into pure helper logic.
 - [x] Extract `App` continue-session and header back-action selectors into pure helper logic.
-- [ ] Continue extracting remaining `App` navigation/session transitions from component callbacks.
-- [ ] Continue extracting remaining `TrainingReader` phase transitions into pure state logic.
-- Keep rendering components focused on view concerns.
+- [x] Extract `App` feed add/refresh merge and timestamp transition planning into pure helper logic.
+- [x] Extract `TrainingReader` finish-recall feedback/sentence-advance planning into pure helper logic.
+- [x] Extract `TrainingReader` scaffold recall-submission planning (miss/advance/finish) into pure helper logic.
+- [x] Extract `App` passage capture sentence/paragraph/last-lines selection planning into pure helper logic.
+- [x] Extract `App` featured daily/random fetch result and error-message planning into shared helper logic.
+- [x] Phase 3 closure: audit remaining `App` callbacks and classify each as either planner-backed or intentionally wiring-only (no business branching).
+- [x] Extract `TrainingReader` miss-continue transition branching (`handleMissContinue`) into pure planner/helper logic.
+- [x] Extract `TrainingReader` no-scaffold token-input parsing flow (`handleRecallInputChange`) into pure helper logic.
+- [x] Add one integration smoke test for `App` mode/session transitions (home/content-browser/preview/active-reader/back).
+- [x] Add one integration smoke test for `TrainingReader` recall transitions (miss/continue/finish/feedback/continue).
+- [x] Refresh `docs/refactor-session-handoff-2026-02-12.md` with current HEAD and validation totals after Phase 3 closure.
 
 Exit criteria:
-- Behavior parity for mode transitions and session restore.
-- New tests cover transition tables and edge paths.
+- All Phase 3 checklist items above are complete.
+- `App` and `TrainingReader` retain behavior parity for mode transitions and session restore.
+- Transition tables and edge paths are covered by pure-helper tests plus the new integration smoke tests.
+
+### App callback audit (2026-02-12)
+- Planner-backed callbacks: `closeActiveExercise`, `handleStartDaily`, `handleStartRandom`, `handleContentBrowserSelectArticle`, `handleStartReading`, `handleContinue` (via `appViewSelectors`, `sessionTransitions`, `featuredArticleLaunch`, and related helpers).
+- Intentionally wiring-only callbacks: `handleSelectActivity`, `handleStartDrill`, `handleProgressChange`, and direct settings toggles that only dispatch UI state/storage writes without branching domain rules.
 
 ## Phase 4: Scaling + Quality Gates
 - Evaluate moving large payload storage from `localStorage` to IndexedDB/SQLite.

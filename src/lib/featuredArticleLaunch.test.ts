@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { prepareFeaturedArticleUpsert, resolveDailyFeaturedArticle } from './featuredArticleLaunch';
+import {
+  getFeaturedFetchErrorMessage,
+  planFeaturedFetchResult,
+  prepareFeaturedArticleUpsert,
+  resolveDailyFeaturedArticle,
+} from './featuredArticleLaunch';
 import type { Article } from '../types';
 
 function makeArticle(id: string, url: string): Article {
@@ -62,5 +67,52 @@ describe('featuredArticleLaunch', () => {
       url: 'https://example.com/new',
       addedAt: 999,
     });
+  });
+
+  it('plans featured fetch result and emits daily info for daily source', () => {
+    const existing = [makeArticle('a1', 'https://example.com/a1')];
+    const plan = planFeaturedFetchResult({
+      existingArticles: existing,
+      payload: {
+        title: 'Daily',
+        content: 'Daily content',
+        url: 'https://example.com/daily',
+      },
+      source: 'Wikipedia Daily',
+      now: 123,
+      generateId: () => 'daily-id',
+      today: '2026-02-12',
+    });
+
+    expect(plan.upserted.article).toMatchObject({
+      id: 'daily-id',
+      source: 'Wikipedia Daily',
+      url: 'https://example.com/daily',
+    });
+    expect(plan.dailyInfo).toEqual({ date: '2026-02-12', articleId: 'daily-id' });
+  });
+
+  it('does not emit daily info for random featured source', () => {
+    const existing = [makeArticle('a1', 'https://example.com/a1')];
+    const plan = planFeaturedFetchResult({
+      existingArticles: existing,
+      payload: {
+        title: 'Featured',
+        content: 'Featured content',
+        url: 'https://example.com/featured',
+      },
+      source: 'Wikipedia Featured',
+      now: 456,
+      generateId: () => 'featured-id',
+      today: '2026-02-12',
+    });
+
+    expect(plan.upserted.article.id).toBe('featured-id');
+    expect(plan.dailyInfo).toBeNull();
+  });
+
+  it('normalizes featured fetch errors to user-facing message', () => {
+    expect(getFeaturedFetchErrorMessage(new Error('Network down'), 'Fallback')).toBe('Network down');
+    expect(getFeaturedFetchErrorMessage('unknown', 'Fallback')).toBe('Fallback');
   });
 });

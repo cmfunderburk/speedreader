@@ -65,6 +65,63 @@ interface PlanScaffoldRecallArgs {
   chunkCount: number;
 }
 
+interface PlanScaffoldRecallSubmissionArgs {
+  predicted: string;
+  chunk: RecallChunkLike;
+  isDrill: boolean;
+  currentIndex: number;
+  chunkCount: number;
+  isDetail: boolean;
+  isWordKnown: (predicted: string, actual: string) => boolean;
+  isExactMatch: (predicted: string, actual: string) => boolean;
+}
+
+interface ScaffoldCompletedWord {
+  key: string;
+  text: string;
+  correct: boolean;
+}
+
+interface PlanScaffoldMissContinueArgs {
+  currentIndex: number;
+  chunkCount: number;
+  isDetail: boolean;
+}
+
+export interface NoScaffoldRecallInputParse {
+  completeTokens: string[];
+  pendingToken: string;
+}
+
+export type ScaffoldRecallSubmissionPlan =
+  | {
+    type: 'show-miss';
+    completedWord: ScaffoldCompletedWord;
+    missResult: { predicted: string; actual: string };
+  }
+  | {
+    type: 'advance';
+    completedWord: ScaffoldCompletedWord;
+    nextIndex: number;
+    statsDelta: RecallStatsDelta;
+  }
+  | {
+    type: 'finish';
+    completedWord: ScaffoldCompletedWord;
+    finalWord: RecallFinishWord;
+  };
+
+export type ScaffoldMissContinuePlan =
+  | {
+    type: 'advance';
+    nextIndex: number;
+    statsDelta: RecallStatsDelta;
+  }
+  | {
+    type: 'finish';
+    finalWord: RecallFinishWord;
+  };
+
 export function applyStatsDelta<T extends RecallStatsDelta>(stats: T, delta: RecallStatsDelta): T {
   return {
     ...stats,
@@ -207,5 +264,90 @@ export function planScaffoldRecallTransition({
       detailTotal: isDetail ? 1 : 0,
       detailKnown: 0,
     },
+  };
+}
+
+export function planScaffoldRecallSubmission({
+  predicted,
+  chunk,
+  isDrill,
+  currentIndex,
+  chunkCount,
+  isDetail,
+  isWordKnown,
+  isExactMatch,
+}: PlanScaffoldRecallSubmissionArgs): ScaffoldRecallSubmissionPlan {
+  const actual = chunk.text;
+  const known = isWordKnown(predicted, actual);
+  const exact = isExactMatch(predicted, actual);
+  const key = chunk.saccade
+    ? makeRecallWordKey(chunk.saccade.lineIndex, chunk.saccade.startChar)
+    : `fallback:${currentIndex}`;
+
+  const transitionPlan = planScaffoldRecallTransition({
+    isKnown: known,
+    isExact: exact,
+    isDetail,
+    isDrill,
+    currentIndex,
+    chunkCount,
+  });
+
+  const completedWord: ScaffoldCompletedWord = { key, text: actual, correct: known };
+
+  if (transitionPlan.type === 'show-miss') {
+    return {
+      type: 'show-miss',
+      completedWord,
+      missResult: { predicted, actual },
+    };
+  }
+
+  if (transitionPlan.type === 'finish') {
+    return {
+      type: 'finish',
+      completedWord,
+      finalWord: transitionPlan.finalWord,
+    };
+  }
+
+  return {
+    type: 'advance',
+    completedWord,
+    nextIndex: transitionPlan.nextIndex,
+    statsDelta: transitionPlan.statsDelta,
+  };
+}
+
+export function planScaffoldMissContinue({
+  currentIndex,
+  chunkCount,
+  isDetail,
+}: PlanScaffoldMissContinueArgs): ScaffoldMissContinuePlan {
+  const transitionPlan = planScaffoldRecallTransition({
+    isKnown: false,
+    isExact: false,
+    isDetail,
+    isDrill: true,
+    currentIndex,
+    chunkCount,
+  });
+
+  if (transitionPlan.type === 'show-miss') {
+    throw new Error('Invalid miss-continue transition: drill flow cannot return show-miss');
+  }
+
+  return transitionPlan;
+}
+
+export function parseNoScaffoldRecallInput(value: string): NoScaffoldRecallInputParse {
+  const endsWithSpace = /\s$/.test(value);
+  const parts = value.split(/\s+/);
+  const completeTokens = (endsWithSpace ? parts : parts.slice(0, -1)).filter(Boolean);
+  const pendingToken = endsWithSpace ? '' : (parts[parts.length - 1] || '');
+
+  return {
+    completeTokens,
+    pendingToken,
   };
 }

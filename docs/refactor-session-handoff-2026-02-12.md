@@ -2,74 +2,38 @@
 
 ## Branch + Anchor
 - Branch: `refactor`
-- Current HEAD: `0fe6999` (`Extract app/training planners and tighten quality gates`)
+- Current HEAD: `2d3164d` (`Add refactor session handoff report`)
+- Working tree: additional uncommitted refactor changes are present.
 
 ## Completed This Session
-### Core refactor commits on `refactor`
-1. `a58049a` - Hardened storage boundary and shared Electron contracts.
-2. `52ca48c` - Extracted app view reducer + close-active-exercise transition planning.
-3. `fe753f9` - Extracted app/training transition planners and selectors.
-4. `0fe6999` - Additional extraction + test hardening + quality gate workflow.
-
-### Notable code moves now in place
-- `App.tsx` transition logic extracted to pure helpers:
-  - `src/lib/appViewState.ts`
-  - `src/lib/appViewSelectors.ts`
-  - `src/lib/sessionTransitions.ts`
-  - `src/lib/appKeyboard.ts`
-  - `src/lib/passageReviewLaunch.ts`
-  - `src/lib/featuredArticleLaunch.ts`
-  - `src/lib/passageQueue.ts`
-- `TrainingReader.tsx` extracted logic:
-  - `src/lib/trainingPhase.ts`
-  - `src/lib/trainingReading.ts`
-  - `src/lib/trainingRecall.ts`
-  - `src/lib/trainingScoring.ts`
-- Quality gate/workflow updates:
-  - `npm run verify` added (lint + tests + build).
-  - ESLint config moved to `eslint.config.mjs` (removed Node module-type warning).
-  - `formatBookName` moved out of component module into `src/lib/libraryFormatting.ts` (resolved react-refresh lint warning).
+- `App` feed transition logic extracted to `src/lib/appFeedTransitions.ts` with tests.
+- `TrainingReader` finish-recall planning extracted to `src/lib/trainingFeedback.ts` with tests.
+- `TrainingReader` scaffold recall submission/miss-continue/input parsing extracted to `src/lib/trainingRecall.ts` with tests.
+- `App` passage capture sentence/paragraph/last-lines selection extracted to `src/lib/passageCapture.ts` with tests.
+- Featured daily/random fetch result and error-message planning expanded in `src/lib/featuredArticleLaunch.ts` with tests.
+- Integration smoke tests added:
+  - `src/components/App.integration.test.tsx`
+  - `src/components/TrainingReader.integration.test.tsx`
+- `docs/refactor-phased-plan.md` updated with explicit Phase 3 closure checklist.
 
 ## Validation Status At Stop
-- `npm run verify` passes on `0fe6999`.
+- `npm run verify` passes on current working tree.
 - Current automated totals:
-  - Test files: 26
-  - Tests: 208
+  - Test files: 31
+  - Tests: 231
 - No lint warnings/errors currently.
 
 ## Remaining Work (Next Session)
 Primary open items from `docs/refactor-phased-plan.md`:
-- Continue extracting remaining `App` navigation/session transitions from component callbacks.
-- Continue extracting remaining `TrainingReader` phase transitions into pure state logic.
-
-### High-value next targets
-1. `App` feed workflows
-   - Extract planning/state transition helpers from:
-     - `src/components/App.tsx` `handleAddFeed`
-     - `src/components/App.tsx` `handleRefreshFeed`
-   - Goal: isolate feed fetch/error/merge behavior from UI callbacks.
-2. `App` passage capture flow
-   - Extract pure capture selection/planning from:
-     - `src/components/App.tsx` `getContiguousNonBlankLineRange`
-     - `src/components/App.tsx` `handleCaptureSentence`
-     - `src/components/App.tsx` `handleCaptureParagraph`
-     - `src/components/App.tsx` `handleCaptureLastLines`
-3. `TrainingReader` recall/feedback orchestration split
-   - `finishRecallPhase` remains large and mixes branching + side effects.
-   - Extract “phase outcome plan” helper that returns:
-     - next phase
-     - scoring outcome
-     - WPM adjustment intent
-     - drill/article side-effect intents
+- Refresh this handoff document once commits for current uncommitted work are split/landed.
+- Phase 4 items remain open (coverage thresholds, CI gate standardization, storage strategy evaluation).
 
 ## Suggested Next Session Sequence
-1. Re-run baseline checks:
-   - `npm run verify`
-2. Do `App` feed-flow extraction + tests.
-3. Do `TrainingReader` `finishRecallPhase` extraction + tests.
-4. Update `docs/refactor-phased-plan.md` checkboxes and re-run:
-   - `npm run verify`
+1. Split current working tree into focused commits by extraction domain.
+2. Re-run `npm run verify`.
+3. Update this handoff with new HEAD and exact verification totals.
+4. Start Phase 4 quality-gate tasks.
 
 ## Notes
-- Keep commits focused by extraction domain (`app-feed-transitions`, `training-feedback-planner`, etc.).
-- Preserve behavior parity; each extraction should introduce tests before/with wiring changes.
+- Keep commits focused by extraction domain (`app-feed-transitions`, `training-recall-planners`, `integration-smoke-tests`, `docs`).
+- Preserve behavior parity; maintain planner/helper tests plus component smoke tests as guardrails.
