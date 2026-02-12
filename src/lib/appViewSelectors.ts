@@ -5,6 +5,7 @@ const ACTIVITY_LABELS: Record<Activity, string> = {
   'paced-reading': 'Paced Reading',
   'active-recall': 'Active Recall',
   training: 'Training',
+  'comprehension-check': 'Comprehension Check',
 };
 
 export function isActiveView(viewState: ViewState): boolean {
@@ -30,6 +31,8 @@ export function getHeaderTitle(viewState: ViewState): string {
       return 'Active Recall';
     case 'active-training':
       return 'Training';
+    case 'active-comprehension':
+      return 'Comprehension Check';
     case 'content-browser':
       return ACTIVITY_LABELS[viewState.activity];
     case 'preview':
@@ -46,6 +49,9 @@ export function getHeaderTitle(viewState: ViewState): string {
 export function planContentBrowserArticleSelection(activity: Activity, article: Article): ViewState {
   if (activity === 'training') {
     return { screen: 'active-training', article };
+  }
+  if (activity === 'comprehension-check') {
+    return { screen: 'active-comprehension', article, entryPoint: 'launcher' };
   }
   return { screen: 'preview', activity, article };
 }
@@ -80,11 +86,14 @@ export function shouldShowBackButton(viewState: ViewState): boolean {
   return viewState.screen !== 'home';
 }
 
-export type HeaderBackAction = 'go-home' | 'close-active-exercise';
+export type HeaderBackAction = 'go-home' | 'close-active-exercise' | 'close-active-comprehension';
 
 export function getHeaderBackAction(viewState: ViewState): HeaderBackAction {
   if (viewState.screen === 'active-exercise') {
     return 'close-active-exercise';
+  }
+  if (viewState.screen === 'active-comprehension') {
+    return 'close-active-comprehension';
   }
   return 'go-home';
 }

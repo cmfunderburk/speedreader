@@ -2071,6 +2071,10 @@ button {
 /* Settings Panel */
 .settings-panel {
   max-width: 500px;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 0.35rem;
 }
 
 .settings-header {
@@ -2125,6 +2129,10 @@ button {
 .settings-presets {
   display: flex;
   gap: 0.5rem;
+}
+
+.settings-presets-wrap {
+  flex-wrap: wrap;
 }
 
 .settings-preset {
@@ -2708,6 +2716,11 @@ button {
   line-height: 1.4;
 }
 
+.activity-card-meta {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 .activity-card-modes {
   display: flex;
   gap: 0.5rem;
@@ -2814,4 +2827,176 @@ button {
 .content-browser-side .feed-manager {
   border-top: none;
   padding: 0;
+}
+
+.reader-finish-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.comprehension-check {
+  max-width: 960px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.comprehension-meta {
+  color: var(--text-secondary);
+}
+
+.comprehension-summary {
+  color: var(--text-secondary);
+}
+
+.comprehension-phase {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.comprehension-phase.open {
+  border-color: rgba(65, 184, 131, 0.5);
+}
+
+.comprehension-phase.closed {
+  border-color: rgba(229, 145, 67, 0.6);
+}
+
+.comprehension-passage {
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.comprehension-question-card {
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.comprehension-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.comprehension-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.comprehension-input,
+.comprehension-textarea {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.65rem 0.7rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.comprehension-input:focus,
+.comprehension-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.comprehension-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.comprehension-result-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  padding: 0.9rem;
+}
+
+.comprehension-result-prompt {
+  color: var(--text-secondary);
+}
+
+.comprehension-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.settings-note {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0.6rem;
+}
+
+.settings-success {
+  color: #41b883;
+  font-size: 0.88rem;
+  margin-bottom: 0.45rem;
+}
+
+.settings-error {
+  color: #e98585;
+  font-size: 0.88rem;
+  margin-bottom: 0.45rem;
+}
+
+.settings-row-column {
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex-direction: column;
+}
+
+.settings-input {
+  width: min(480px, 100%);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-inline-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+@media (max-width: 800px) {
+  .comprehension-check {
+    padding-bottom: 1rem;
+  }
 }

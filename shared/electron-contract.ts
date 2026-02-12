@@ -80,3 +80,11 @@ export interface CorpusAPI {
   getInfo(): Promise<CorpusInfo>
   sampleArticle(family: CorpusFamily, tier: CorpusTier): Promise<CorpusArticle | null>
 }
+
+export type ApiKeyId = 'comprehension-gemini'
+
+export interface SecureKeysAPI {
+  isAvailable(): Promise<boolean>
+  get(keyId: ApiKeyId): Promise<string | null>
+  set(keyId: ApiKeyId, value: string | null): Promise<void>
+}

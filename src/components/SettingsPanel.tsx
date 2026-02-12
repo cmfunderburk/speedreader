@@ -1,11 +1,21 @@
-import { useMemo } from 'react';
-import type { Settings } from '../lib/storage';
-import type { PredictionLineWidth, PredictionPreviewMode, RampCurve, ThemePreference } from '../types';
+import { useEffect, useMemo, useState } from 'react';
+import type { ComprehensionApiKeyStorageMode, Settings } from '../lib/storage';
+import { COMPREHENSION_GEMINI_MODELS } from '../types';
+import type {
+  ComprehensionGeminiModel,
+  PredictionLineWidth,
+  PredictionPreviewMode,
+  RampCurve,
+  ThemePreference,
+} from '../types';
 import { getEffectiveWpm } from '../lib/rsvp';
 
 interface SettingsPanelProps {
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
+  comprehensionApiKey: string;
+  comprehensionApiKeyStorageMode: ComprehensionApiKeyStorageMode;
+  onComprehensionApiKeyChange: (apiKey: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -30,6 +40,16 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'light', label: 'Light' },
   { value: 'system', label: 'System' },
 ];
+
+const GEMINI_MODEL_LABELS: Record<ComprehensionGeminiModel, string> = {
+  'gemini-3-pro-preview': 'Gemini 3 Pro Preview',
+  'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+};
+
+const GEMINI_MODEL_OPTIONS = COMPREHENSION_GEMINI_MODELS.map((model) => ({
+  value: model,
+  label: GEMINI_MODEL_LABELS[model],
+}));
 
 function RampCurveGraph({ settings }: { settings: Settings }) {
   const { defaultWpm, rampCurve, rampStartPercent, rampRate, rampInterval } = settings;
@@ -109,9 +129,47 @@ function RampCurveGraph({ settings }: { settings: Settings }) {
   );
 }
 
-export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsPanelProps) {
+export function SettingsPanel({
+  settings,
+  onSettingsChange,
+  comprehensionApiKey,
+  comprehensionApiKeyStorageMode,
+  onComprehensionApiKeyChange,
+  onClose,
+}: SettingsPanelProps) {
   const update = (partial: Partial<Settings>) => {
     onSettingsChange({ ...settings, ...partial });
+  };
+  const [apiKeyDraft, setApiKeyDraft] = useState(comprehensionApiKey);
+  const [apiKeyNotice, setApiKeyNotice] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+
+  const apiKeyStorageHint = comprehensionApiKeyStorageMode === 'secure'
+    ? 'Stored in OS-backed secure storage (Electron).'
+    : comprehensionApiKeyStorageMode === 'local'
+      ? 'Stored in browser local storage.'
+      : 'Secure storage is unavailable in this Electron session; using local app storage fallback.';
+
+  useEffect(() => {
+    setApiKeyDraft(comprehensionApiKey);
+    setApiKeyNotice(null);
+    setApiKeyError(null);
+  }, [comprehensionApiKey]);
+
+  const applyApiKey = async (value: string): Promise<void> => {
+    setIsSavingApiKey(true);
+    setApiKeyNotice(null);
+    setApiKeyError(null);
+    try {
+      await onComprehensionApiKeyChange(value);
+      setApiKeyNotice(value.trim() ? 'API key saved.' : 'API key cleared.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to save API key.';
+      setApiKeyError(message);
+    } finally {
+      setIsSavingApiKey(false);
+    }
   };
 
   return (
@@ -295,6 +353,60 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 {opt.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Comprehension Check API Key</h3>
+          <div className="settings-row">
+            <span className="settings-label">Model</span>
+            <div className="settings-presets settings-presets-wrap">
+              {GEMINI_MODEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={`settings-preset${settings.comprehensionGeminiModel === opt.value ? ' settings-preset-active' : ''}`}
+                  onClick={() => update({ comprehensionGeminiModel: opt.value })}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="settings-note">
+            Required for generating/scoring comprehension checks. Other reading features do not require this key.
+          </p>
+          <p className="settings-note">{apiKeyStorageHint}</p>
+          {apiKeyNotice && <p className="settings-success">{apiKeyNotice}</p>}
+          {apiKeyError && <p className="settings-error">{apiKeyError}</p>}
+          <div className="settings-row settings-row-column">
+            <input
+              className="settings-input"
+              type="password"
+              value={apiKeyDraft}
+              onChange={(event) => setApiKeyDraft(event.target.value)}
+              placeholder="Paste API key"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div className="settings-inline-actions">
+              <button
+                className="settings-preset"
+                onClick={() => void applyApiKey(apiKeyDraft)}
+                disabled={isSavingApiKey}
+              >
+                {isSavingApiKey ? 'Saving...' : 'Save Key'}
+              </button>
+              <button
+                className="settings-preset"
+                onClick={() => {
+                  setApiKeyDraft('');
+                  void applyApiKey('');
+                }}
+                disabled={isSavingApiKey}
+              >
+                Clear Key
+              </button>
+            </div>
           </div>
         </div>
       </div>

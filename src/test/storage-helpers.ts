@@ -69,6 +69,8 @@ export function clearStorage(): void {
   localStorage.removeItem('speedread_daily_date');
   localStorage.removeItem('speedread_daily_article_id');
   localStorage.removeItem('speedread_comprehension_attempts');
+  localStorage.removeItem('speedread_comprehension_api_key');
+  delete window.secureKeys;
 }
 
 /**

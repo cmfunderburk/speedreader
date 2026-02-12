@@ -5,10 +5,11 @@ Paced reading and recall training app, with a saccade-first workflow and integra
 Last updated: February 2026.
 
 ## Product Scope
-Reader currently supports three connected workflows:
+Reader currently supports four connected workflows:
 1. **Paced Reading** (`Saccade` and `RSVP`) for throughput and focus.
 2. **Active Exercise** (`Prediction` and `Recall`) on saved passages.
 3. **Training** (`Article` and `Random Drill`) for repeated read-recall-feedback practice.
+4. **Comprehension Check** (LLM-generated question sets) for passage-grounded understanding feedback.
 
 The design goal is to reduce friction between reading and retention practice by keeping context, pacing, and controls consistent across workflows.
 
@@ -43,6 +44,18 @@ The design goal is to reduce friction between reading and retention practice by 
 - Optional auto-adjust difficulty uses a user-selected WPM range and fixed `+/-10` WPM steps.
 - In Random Drill with scaffold off, `Tab` previews remaining words at current WPM; those previewed words become practice-only (score `0`) even if typed correctly afterward.
 
+### Comprehension Check
+- Launcher entry: select `Comprehension Check` from Home, then choose an article.
+- Post-reading entry: when paced reading reaches the end of a text, launch a check directly from the reader surface.
+- Closed-book -> open-book sequencing:
+  - factual questions first (passage hidden),
+  - inferential/structural/evaluative questions next (passage available).
+- Mixed formats supported in one check: multiple choice, true/false, short answer, essay.
+- Results emphasize per-question explanatory feedback and persist attempt history locally.
+- Configure API key in `Settings -> Comprehension Check API Key` (this key is only required for comprehension checks).
+- Configure model in `Settings -> Comprehension Check API Key` (currently `gemini-3-pro-preview` or `gemini-3-flash-preview`).
+- In Electron builds, API keys are stored in OS-backed secure encrypted storage when available (with local app-storage fallback if the OS keyring is unavailable); in web builds they use browser local storage.
+
 ## Workflow Features
 - Passage workspace in paced reading:
   - `Save Sentence`
@@ -51,7 +64,7 @@ The design goal is to reduce friction between reading and retention practice by 
   - review queue actions (`Recall`, `Predict`, `Hard`, `Easy`, `Done`)
 - Explicit `Return to Reading` from active exercise.
 - Session snapshot restore for reading/exercise continuity.
-- Per-activity WPM persistence (`paced-reading`, `active-recall`, `training`).
+- Per-activity WPM persistence (`paced-reading`, `active-recall`, `training`, `comprehension-check`).
 
 ## Content Sources
 - URL import (Readability extraction).
@@ -104,6 +117,6 @@ If `electron/**` or Electron-relevant shared/type/config surfaces changed, also 
 ## Project Docs
 - Agent/repo workflow: `AGENTS.md`
 - AI implementation context: `CLAUDE.md`
-- Product roadmap: `docs/brainstorming/saccade-entrypoint-product-roadmap.md`
-- Random drill corpus discussion: `docs/brainstorming/expanding-random-drill.txt`
-- Ops runbook: `docs/operational-runbook.md`
+- Comprehension check spec: `docs/brainstorming/comprehension-companion-v1-spec.md`
+- Comprehension implementation plan: `docs/brainstorming/comprehension-companion-v1-implementation-plan.md`
+- Archived planning/runbook docs: `docs/.archive/`

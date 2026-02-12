@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CorpusAPI, LibraryAPI } from '../shared/electron-contract'
+import type { CorpusAPI, LibraryAPI, SecureKeysAPI } from '../shared/electron-contract'
 
 contextBridge.exposeInMainWorld('corpus', {
   getInfo: () =>
@@ -34,3 +34,14 @@ contextBridge.exposeInMainWorld('library', {
   importManifest: () =>
     ipcRenderer.invoke('library:importManifest'),
 } satisfies LibraryAPI)
+
+contextBridge.exposeInMainWorld('secureKeys', {
+  isAvailable: () =>
+    ipcRenderer.invoke('secure-keys:isAvailable'),
+
+  get: (keyId) =>
+    ipcRenderer.invoke('secure-keys:get', keyId),
+
+  set: (keyId, value) =>
+    ipcRenderer.invoke('secure-keys:set', keyId, value),
+} satisfies SecureKeysAPI)

@@ -22,6 +22,11 @@ import {
   loadComprehensionAttempts,
   appendComprehensionAttempt,
   saveComprehensionAttempts,
+  loadComprehensionApiKey,
+  saveComprehensionApiKey,
+  getComprehensionApiKeyStorageMode,
+  loadPreferredComprehensionApiKey,
+  savePreferredComprehensionApiKey,
 } from '../lib/storage';
 import type { Passage, ComprehensionAttempt } from '../types';
 import {
@@ -147,19 +152,22 @@ describe('storage-helpers with real storage functions', () => {
     expect(loadSessionSnapshot()).toBeNull();
   });
 
-  it('settings default and persist prediction preview configuration', () => {
+  it('settings default and persist prediction preview/model configuration', () => {
     const defaults = loadSettings();
     expect(defaults.predictionPreviewMode).toBe('sentences');
     expect(defaults.predictionPreviewSentenceCount).toBe(2);
+    expect(defaults.comprehensionGeminiModel).toBe('gemini-3-flash-preview');
     expect(defaults.themePreference).toBe('dark');
     expect(defaults.wpmByActivity['paced-reading']).toBe(defaults.defaultWpm);
     expect(defaults.wpmByActivity['active-recall']).toBe(defaults.defaultWpm);
     expect(defaults.wpmByActivity.training).toBe(defaults.defaultWpm);
+    expect(defaults.wpmByActivity['comprehension-check']).toBe(defaults.defaultWpm);
 
     saveSettings({
       ...defaults,
       predictionPreviewMode: 'unlimited',
       predictionPreviewSentenceCount: 5,
+      comprehensionGeminiModel: 'gemini-3-pro-preview',
       themePreference: 'system',
       wpmByActivity: {
         ...defaults.wpmByActivity,
@@ -170,6 +178,7 @@ describe('storage-helpers with real storage functions', () => {
     const loaded = loadSettings();
     expect(loaded.predictionPreviewMode).toBe('unlimited');
     expect(loaded.predictionPreviewSentenceCount).toBe(5);
+    expect(loaded.comprehensionGeminiModel).toBe('gemini-3-pro-preview');
     expect(loaded.themePreference).toBe('system');
     expect(loaded.wpmByActivity.training).toBe(460);
   });
@@ -185,6 +194,21 @@ describe('storage-helpers with real storage functions', () => {
     expect(loaded.wpmByActivity['paced-reading']).toBe(360);
     expect(loaded.wpmByActivity['active-recall']).toBe(360);
     expect(loaded.wpmByActivity.training).toBe(360);
+    expect(loaded.wpmByActivity['comprehension-check']).toBe(360);
+    expect(loaded.comprehensionGeminiModel).toBe('gemini-3-flash-preview');
+  });
+
+  it('normalizes unknown comprehension model to default', () => {
+    localStorage.setItem('speedread_settings', JSON.stringify({
+      comprehensionGeminiModel: 'gemini-2.0-flash',
+    }));
+
+    const loaded = loadSettings();
+    expect(loaded.comprehensionGeminiModel).toBe('gemini-3-flash-preview');
+
+    saveSettings(loaded);
+    const persisted = JSON.parse(localStorage.getItem('speedread_settings') || '{}');
+    expect(persisted.comprehensionGeminiModel).toBe('gemini-3-flash-preview');
   });
 
   it('runs schema migration and persists normalized legacy settings/drill state', () => {
@@ -221,6 +245,7 @@ describe('storage-helpers with real storage functions', () => {
       'paced-reading': 350,
       'active-recall': 350,
       training: 350,
+      'comprehension-check': 350,
     });
     expect(persistedSettings.lastSession.activity).toBe('paced-reading');
 
@@ -305,6 +330,66 @@ describe('storage-helpers with real storage functions', () => {
     expect(loadTrainingScoreDetails()).toBe(true);
     expect(loadTrainingScaffold()).toBe(false);
   });
+
+  it('comprehension api key helpers persist, trim, and clear values', () => {
+    expect(loadComprehensionApiKey()).toBeNull();
+
+    saveComprehensionApiKey('  my-key  ');
+    expect(loadComprehensionApiKey()).toBe('my-key');
+
+    saveComprehensionApiKey('');
+    expect(loadComprehensionApiKey()).toBeNull();
+  });
+
+  it('preferred api key helpers use local storage when secure bridge is absent', async () => {
+    expect(await getComprehensionApiKeyStorageMode()).toBe('local');
+
+    await savePreferredComprehensionApiKey('  local-key  ');
+    expect(await loadPreferredComprehensionApiKey()).toBe('local-key');
+
+    await savePreferredComprehensionApiKey('');
+    expect(await loadPreferredComprehensionApiKey()).toBeNull();
+  });
+
+  it('preferred api key helpers use secure bridge when available', async () => {
+    const secureMap = new Map<string, string>();
+    window.secureKeys = {
+      isAvailable: async () => true,
+      get: async (keyId) => secureMap.get(keyId) ?? null,
+      set: async (keyId, value) => {
+        if (value) secureMap.set(keyId, value);
+        else secureMap.delete(keyId);
+      },
+    };
+
+    localStorage.setItem('speedread_comprehension_api_key', 'legacy');
+
+    expect(await getComprehensionApiKeyStorageMode()).toBe('secure');
+    // Legacy local key should migrate into secure store on first preferred load.
+    expect(await loadPreferredComprehensionApiKey()).toBe('legacy');
+    expect(secureMap.get('comprehension-gemini')).toBe('legacy');
+    expect(localStorage.getItem('speedread_comprehension_api_key')).toBeNull();
+
+    await savePreferredComprehensionApiKey('secure-key');
+    expect(secureMap.get('comprehension-gemini')).toBe('secure-key');
+    expect(await loadPreferredComprehensionApiKey()).toBe('secure-key');
+
+    await savePreferredComprehensionApiKey(null);
+    expect(await loadPreferredComprehensionApiKey()).toBeNull();
+  });
+
+  it('preferred helpers fall back to local storage when secure bridge exists but is unavailable', async () => {
+    window.secureKeys = {
+      isAvailable: async () => false,
+      get: async () => null,
+      set: async () => {},
+    };
+
+    expect(await getComprehensionApiKeyStorageMode()).toBe('unavailable');
+    await savePreferredComprehensionApiKey('abc');
+    expect(await loadPreferredComprehensionApiKey()).toBe('abc');
+    expect(localStorage.getItem('speedread_comprehension_api_key')).toBe('abc');
+  });
 });
 
 function makeAttempt(overrides: Partial<ComprehensionAttempt> = {}): ComprehensionAttempt {
@@ -318,6 +403,19 @@ function makeAttempt(overrides: Partial<ComprehensionAttempt> = {}): Comprehensi
     createdAt: Date.now(),
     durationMs: 60000,
     ...overrides,
+  };
+}
+
+function makeQuestionResult() {
+  return {
+    id: 'q1',
+    dimension: 'factual' as const,
+    format: 'short-answer' as const,
+    prompt: 'What is the central claim?',
+    userAnswer: 'The central claim is liberty with limits.',
+    modelAnswer: 'The passage argues liberty with social limits.',
+    score: 2,
+    feedback: 'Mostly right with minor omissions.',
   };
 }
 
@@ -354,7 +452,24 @@ describe('comprehension attempt storage', () => {
     expect(loaded[1].id).toBe('good-2');
   });
 
-  it('caps stored attempts at 200, keeping most recent first', () => {
+  it('filters attempts with invalid required fields', () => {
+    localStorage.setItem(
+      'speedread_comprehension_attempts',
+      JSON.stringify([
+        makeAttempt({ id: 'valid', questions: [makeQuestionResult()] }),
+        { ...makeAttempt({ id: 'bad-entry-point' }), entryPoint: 'sidebar' },
+        { ...makeAttempt({ id: 'bad-duration' }), durationMs: -1 },
+        { ...makeAttempt({ id: 'bad-score' }), overallScore: 101 },
+        { ...makeAttempt({ id: 'bad-question' }), questions: [{ ...makeQuestionResult(), score: 99 }] },
+      ])
+    );
+
+    const loaded = loadComprehensionAttempts();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe('valid');
+  });
+
+  it('caps saved attempts at 200, preserving input order', () => {
     const attempts: ComprehensionAttempt[] = [];
     for (let i = 0; i < 210; i++) {
       attempts.push(makeAttempt({ id: `cap-${i}`, createdAt: 1000 + i }));
@@ -365,6 +480,19 @@ describe('comprehension attempt storage', () => {
     expect(loaded).toHaveLength(200);
     expect(loaded[0].id).toBe('cap-0');
     expect(loaded[199].id).toBe('cap-199');
+  });
+
+  it('caps loaded attempts at 200 even when storage was oversized externally', () => {
+    const attempts: ComprehensionAttempt[] = [];
+    for (let i = 0; i < 210; i++) {
+      attempts.push(makeAttempt({ id: `raw-${i}`, createdAt: 1000 + i }));
+    }
+    localStorage.setItem('speedread_comprehension_attempts', JSON.stringify(attempts));
+
+    const loaded = loadComprehensionAttempts();
+    expect(loaded).toHaveLength(200);
+    expect(loaded[0].id).toBe('raw-0');
+    expect(loaded[199].id).toBe('raw-199');
   });
 
   it('prepends new attempts (most recent first)', () => {

@@ -114,6 +114,10 @@ export function planStartReadingFromPreview(
     };
   }
 
+  if (activity === 'comprehension-check') {
+    return null;
+  }
+
   return null;
 }
 
@@ -134,6 +138,13 @@ export function planContinueSession(info: ContinueSessionInfo): SessionLaunchPla
       loadOptions: { displayMode: info.displayMode },
       nextView: { screen: 'active-exercise' },
       autoPlay: false,
+    };
+  }
+
+  if (info.activity === 'comprehension-check') {
+    return {
+      ...createPacedReadingLaunchPlan(info.article, 'saccade'),
+      saveLastSession: undefined,
     };
   }
 

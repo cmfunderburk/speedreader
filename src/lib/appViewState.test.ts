@@ -34,6 +34,10 @@ describe('appViewState', () => {
       { action: { type: 'open-preview', activity: 'active-recall', article }, expected: { screen: 'preview', activity: 'active-recall', article } },
       { action: { type: 'open-active-reader' }, expected: { screen: 'active-reader' } },
       { action: { type: 'open-active-exercise' }, expected: { screen: 'active-exercise' } },
+      {
+        action: { type: 'open-active-comprehension', article, entryPoint: 'launcher' },
+        expected: { screen: 'active-comprehension', article, entryPoint: 'launcher' },
+      },
       { action: { type: 'open-active-training', article }, expected: { screen: 'active-training', article } },
       { action: { type: 'open-active-training' }, expected: { screen: 'active-training' } },
       { action: { type: 'open-settings' }, expected: { screen: 'settings' } },
@@ -54,6 +58,7 @@ describe('appViewState', () => {
       { screen: 'preview', activity: 'paced-reading', article },
       { screen: 'active-reader' },
       { screen: 'active-exercise' },
+      { screen: 'active-comprehension', article, entryPoint: 'post-reading' },
       { screen: 'active-training', article },
       { screen: 'settings' },
       { screen: 'library-settings' },

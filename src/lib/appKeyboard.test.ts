@@ -23,6 +23,12 @@ describe('appKeyboard', () => {
     expect(planEscapeAction({ screen: 'active-exercise' })).toBe('close-active-exercise');
   });
 
+  it('returns close-active-comprehension on active comprehension', () => {
+    const article = makeArticle('c1');
+    expect(planEscapeAction({ screen: 'active-comprehension', article, entryPoint: 'launcher' }))
+      .toBe('close-active-comprehension');
+  });
+
   it('returns go-home for all other screens', () => {
     const article = makeArticle('a1');
     expect(planEscapeAction({ screen: 'content-browser', activity: 'training' })).toBe('go-home');

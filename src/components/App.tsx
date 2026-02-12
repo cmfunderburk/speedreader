@@ -12,6 +12,7 @@ import { PredictionReader } from './PredictionReader';
 import { PredictionStats } from './PredictionStats';
 import { RecallReader } from './RecallReader';
 import { TrainingReader } from './TrainingReader';
+import { ComprehensionCheck } from './ComprehensionCheck';
 import { useRSVP } from '../hooks/useRSVP';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { calculateRemainingTime, formatTime, calculateProgress } from '../lib/rsvp';
@@ -32,8 +33,12 @@ import {
   loadSessionSnapshot,
   saveSessionSnapshot,
   clearSessionSnapshot,
+  loadComprehensionAttempts,
+  getComprehensionApiKeyStorageMode,
+  loadPreferredComprehensionApiKey,
+  savePreferredComprehensionApiKey,
 } from '../lib/storage';
-import type { Settings } from '../lib/storage';
+import type { ComprehensionApiKeyStorageMode, Settings } from '../lib/storage';
 import { fetchFeed } from '../lib/feeds';
 import {
   fetchDailyArticle,
@@ -55,6 +60,7 @@ import type {
   PassageReviewMode,
   PassageReviewState,
   ThemePreference,
+  ComprehensionAttempt,
 } from '../types';
 import { PREDICTION_LINE_WIDTHS } from '../types';
 import { measureTextMetrics } from '../lib/textMetrics';
@@ -95,6 +101,7 @@ import {
   mergeFeedArticles,
   updateFeedLastFetched,
 } from '../lib/appFeedTransitions';
+import { createComprehensionAdapter } from '../lib/comprehensionAdapter';
 
 const PASSAGE_CAPTURE_LAST_LINE_COUNT = 3;
 const MIN_WPM = 100;
@@ -219,6 +226,15 @@ export function App() {
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [activePassageId, setActivePassageId] = useState<string | null>(null);
   const [isPassageWorkspaceOpen, setIsPassageWorkspaceOpen] = useState(false);
+  const [comprehensionApiKey, setComprehensionApiKey] = useState<string>('');
+  const [comprehensionApiKeyStorageMode, setComprehensionApiKeyStorageMode] = useState<ComprehensionApiKeyStorageMode>('local');
+  const [comprehensionAttempts, setComprehensionAttempts] = useState<ComprehensionAttempt[]>(() => loadComprehensionAttempts());
+  const comprehensionAdapter = useMemo(() => {
+    return createComprehensionAdapter({
+      apiKey: comprehensionApiKey || undefined,
+      model: settings.comprehensionGeminiModel,
+    });
+  }, [comprehensionApiKey, settings.comprehensionGeminiModel]);
 
   const resolvedTheme = useMemo(
     () => resolveThemePreference(displaySettings.themePreference, systemTheme),
@@ -247,6 +263,28 @@ export function App() {
   useEffect(() => {
     articlesRef.current = articles;
   }, [articles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [storageMode, apiKey] = await Promise.all([
+        getComprehensionApiKeyStorageMode(),
+        loadPreferredComprehensionApiKey(),
+      ]);
+      if (cancelled) return;
+      setComprehensionApiKeyStorageMode(storageMode);
+      setComprehensionApiKey(apiKey ?? '');
+    })().catch((err) => {
+      console.error('Failed to initialize comprehension API key storage', err);
+      if (cancelled) return;
+      setComprehensionApiKeyStorageMode('unavailable');
+      setComprehensionApiKey('');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const rsvp = useRSVP({
     initialWpm: settings.wpmByActivity['paced-reading'],
@@ -320,6 +358,20 @@ export function App() {
     goHome();
   }, [articles, goHome, rsvp, setViewState, syncWpmForActivity]);
 
+  const closeActiveComprehension = useCallback(() => {
+    if (viewState.screen !== 'active-comprehension') {
+      goHome();
+      return;
+    }
+
+    if (viewState.entryPoint === 'post-reading') {
+      setViewState({ screen: 'active-reader' });
+      return;
+    }
+
+    goHome();
+  }, [goHome, setViewState, viewState]);
+
   // Keyboard shortcuts
   const activeView = isActiveView(viewState);
   const activeWpmActivity: Activity | null = getActiveWpmActivity(viewState);
@@ -339,6 +391,8 @@ export function App() {
       const escapeAction = planEscapeAction(viewState);
       if (escapeAction === 'close-active-exercise') {
         closeActiveExercise();
+      } else if (escapeAction === 'close-active-comprehension') {
+        closeActiveComprehension();
       } else if (escapeAction === 'go-home') {
         goHome();
       }
@@ -430,6 +484,12 @@ export function App() {
   const handleSettingsChange = useCallback((newSettings: Settings) => {
     setDisplaySettings(newSettings);
     saveSettings(newSettings);
+  }, []);
+
+  const handleComprehensionApiKeyChange = useCallback(async (apiKey: string) => {
+    await savePreferredComprehensionApiKey(apiKey);
+    setComprehensionApiKey(apiKey.trim());
+    setComprehensionApiKeyStorageMode(await getComprehensionApiKeyStorageMode());
   }, []);
 
   const handleRampEnabledChange = useCallback((enabled: boolean) => {
@@ -719,6 +779,20 @@ export function App() {
     navigate({ screen: 'active-training' });
   }, [navigate, syncWpmForActivity]);
 
+  const handleStartComprehensionFromReading = useCallback(() => {
+    if (!rsvp.article) return;
+    rsvp.pause();
+    setViewState({
+      screen: 'active-comprehension',
+      article: rsvp.article,
+      entryPoint: 'post-reading',
+    });
+  }, [rsvp, setViewState]);
+
+  const handleComprehensionAttemptSaved = useCallback((attempt: ComprehensionAttempt) => {
+    setComprehensionAttempts((existing) => [attempt, ...existing].slice(0, 200));
+  }, []);
+
   const launchFeaturedArticle = useCallback(async ({
     fetchArticle,
     source,
@@ -817,6 +891,14 @@ export function App() {
     return resolveContinueSessionInfo(settings.lastSession, articles);
   }, [settings.lastSession, articles]);
 
+  const comprehensionSummary = useMemo(() => {
+    const lastAttempt = comprehensionAttempts[0];
+    return {
+      attemptCount: comprehensionAttempts.length,
+      lastScore: lastAttempt?.overallScore ?? null,
+    };
+  }, [comprehensionAttempts]);
+
   const handleContinue = useCallback((info: { article: Article; activity: Activity; displayMode: DisplayMode }) => {
     applySessionLaunchPlan(planContinueSession(info));
   }, [applySessionLaunchPlan]);
@@ -837,6 +919,7 @@ export function App() {
     : `${totalWords}`;
 
   const progress = calculateProgress(rsvp.currentChunkIndex, rsvp.chunks.length);
+  const isAtEndOfText = rsvp.chunks.length > 0 && rsvp.currentChunkIndex >= rsvp.chunks.length - 1;
 
   // Header title based on view
   const headerTitle = getHeaderTitle(viewState);
@@ -1035,7 +1118,13 @@ export function App() {
           {showBackButton && (
             <button
               className="control-btn app-back-btn"
-              onClick={headerBackAction === 'close-active-exercise' ? closeActiveExercise : goHome}
+              onClick={
+                headerBackAction === 'close-active-exercise'
+                  ? closeActiveExercise
+                  : headerBackAction === 'close-active-comprehension'
+                    ? closeActiveComprehension
+                    : goHome
+              }
             >
               Home
             </button>
@@ -1087,6 +1176,7 @@ export function App() {
             randomStatus={randomStatus}
             randomError={randomError}
             continueInfo={continueInfo}
+            comprehensionSummary={comprehensionSummary}
           />
         )}
 
@@ -1142,6 +1232,13 @@ export function App() {
             <ProgressBar progress={progress} onChange={handleProgressChange} />
             {renderArticleInfo()}
             {renderReaderControls(['rsvp', 'saccade'], 'paced-reading')}
+            {isAtEndOfText && (
+              <div className="reader-finish-actions">
+                <button className="control-btn" onClick={handleStartComprehensionFromReading}>
+                  Comprehension Check
+                </button>
+              </div>
+            )}
             {renderPassageWorkspace()}
           </>
         )}
@@ -1211,6 +1308,17 @@ export function App() {
           </div>
         )}
 
+        {viewState.screen === 'active-comprehension' && (
+          <ComprehensionCheck
+            article={viewState.article}
+            entryPoint={viewState.entryPoint}
+            adapter={comprehensionAdapter}
+            onClose={closeActiveComprehension}
+            onOpenSettings={() => navigate({ screen: 'settings' })}
+            onAttemptSaved={handleComprehensionAttemptSaved}
+          />
+        )}
+
         {/* Bookmarklet import */}
         {viewState.screen === 'add' && (
           <AddContent
@@ -1224,6 +1332,9 @@ export function App() {
           <SettingsPanel
             settings={displaySettings}
             onSettingsChange={handleSettingsChange}
+            comprehensionApiKey={comprehensionApiKey}
+            comprehensionApiKeyStorageMode={comprehensionApiKeyStorageMode}
+            onComprehensionApiKeyChange={handleComprehensionApiKeyChange}
             onClose={goHome}
           />
         )}

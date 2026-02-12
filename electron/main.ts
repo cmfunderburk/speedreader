@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, protocol, net, safeStorage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath, pathToFileURL } from 'url'
+import type { ApiKeyId } from '../shared/electron-contract'
 import {
   getConfiguredSources,
   scanDirectory,
@@ -60,6 +61,10 @@ function corpusKey(family: CorpusFamily, tier: CorpusTier): string {
 
 const corpusCache = new Map<string, TierData>()
 const SUPPORTED_BOOK_EXTENSIONS = new Set(['.pdf', '.epub', '.txt'])
+const SUPPORTED_API_KEY_IDS: ApiKeyId[] = ['comprehension-gemini']
+const SUPPORTED_API_KEY_ID_SET = new Set<ApiKeyId>(SUPPORTED_API_KEY_IDS)
+
+type EncryptedApiKeyStore = Partial<Record<ApiKeyId, string>>
 
 function normalizePath(inputPath: string): string | null {
   try {
@@ -103,6 +108,94 @@ function getResourcePath(...segments: string[]): string {
     ? process.resourcesPath
     : path.join(__dirname, '..')
   return path.join(base, ...segments)
+}
+
+function getEncryptedApiKeyStorePath(): string {
+  return path.join(app.getPath('userData'), 'secure-api-keys.json')
+}
+
+function isSecureApiKeyStorageAvailable(): boolean {
+  return safeStorage.isEncryptionAvailable()
+}
+
+function parseApiKeyId(input: string): ApiKeyId {
+  if (!SUPPORTED_API_KEY_ID_SET.has(input as ApiKeyId)) {
+    throw new Error(`Unsupported API key id: ${input}`)
+  }
+  return input as ApiKeyId
+}
+
+function loadEncryptedApiKeyStore(): EncryptedApiKeyStore {
+  const storePath = getEncryptedApiKeyStorePath()
+  if (!fs.existsSync(storePath)) return {}
+
+  try {
+    const raw = fs.readFileSync(storePath, 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {}
+    }
+
+    const output: EncryptedApiKeyStore = {}
+    for (const keyId of SUPPORTED_API_KEY_IDS) {
+      const value = (parsed as Record<string, unknown>)[keyId]
+      if (typeof value === 'string') {
+        output[keyId] = value
+      }
+    }
+    return output
+  } catch {
+    return {}
+  }
+}
+
+function saveEncryptedApiKeyStore(store: EncryptedApiKeyStore): void {
+  const storePath = getEncryptedApiKeyStorePath()
+  const activeEntries = Object.entries(store).filter(([, value]) => typeof value === 'string' && value.length > 0)
+  if (activeEntries.length === 0) {
+    if (fs.existsSync(storePath)) {
+      fs.unlinkSync(storePath)
+    }
+    return
+  }
+
+  fs.mkdirSync(path.dirname(storePath), { recursive: true })
+  fs.writeFileSync(storePath, JSON.stringify(Object.fromEntries(activeEntries)), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  })
+}
+
+function getSecureApiKey(keyId: ApiKeyId): string | null {
+  if (!isSecureApiKeyStorageAvailable()) {
+    throw new Error('Secure storage is unavailable in this Electron session')
+  }
+
+  const store = loadEncryptedApiKeyStore()
+  const encrypted = store[keyId]
+  if (!encrypted) return null
+
+  try {
+    const decrypted = safeStorage.decryptString(Buffer.from(encrypted, 'base64')).trim()
+    return decrypted.length > 0 ? decrypted : null
+  } catch {
+    return null
+  }
+}
+
+function setSecureApiKey(keyId: ApiKeyId, value: string | null): void {
+  if (!isSecureApiKeyStorageAvailable()) {
+    throw new Error('Secure storage is unavailable in this Electron session')
+  }
+
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  const store = loadEncryptedApiKeyStore()
+  if (normalized.length === 0) {
+    delete store[keyId]
+  } else {
+    store[keyId] = safeStorage.encryptString(normalized).toString('base64')
+  }
+  saveEncryptedApiKeyStore(store)
 }
 
 function getCorpusDir(): string {
@@ -372,6 +465,20 @@ ipcMain.handle('library:importManifest', async () => {
     sharedRootPath,
     ...summary,
   }
+})
+
+ipcMain.handle('secure-keys:isAvailable', () => {
+  return isSecureApiKeyStorageAvailable()
+})
+
+ipcMain.handle('secure-keys:get', (_, keyId: string) => {
+  const validKeyId = parseApiKeyId(keyId)
+  return getSecureApiKey(validKeyId)
+})
+
+ipcMain.handle('secure-keys:set', (_, keyId: string, value: string | null) => {
+  const validKeyId = parseApiKeyId(keyId)
+  setSecureApiKey(validKeyId, value)
 })
 
 // Corpus IPC handlers

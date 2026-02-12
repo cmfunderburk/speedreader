@@ -17,9 +17,22 @@ interface HomeScreenProps {
   randomStatus: 'idle' | 'loading' | 'error';
   randomError: string | null;
   continueInfo: ContinueInfo | null;
+  comprehensionSummary: { attemptCount: number; lastScore: number | null };
 }
 
-export function HomeScreen({ onSelectActivity, onContinue, onStartDrill, onStartDaily, dailyStatus, dailyError, onStartRandom, randomStatus, randomError, continueInfo }: HomeScreenProps) {
+export function HomeScreen({
+  onSelectActivity,
+  onContinue,
+  onStartDrill,
+  onStartDaily,
+  dailyStatus,
+  dailyError,
+  onStartRandom,
+  randomStatus,
+  randomError,
+  continueInfo,
+  comprehensionSummary,
+}: HomeScreenProps) {
   return (
     <div className="home-screen">
       {continueInfo && (
@@ -89,6 +102,24 @@ export function HomeScreen({ onSelectActivity, onContinue, onStartDrill, onStart
           <div className="activity-card-modes">
             <span className="activity-card-mode">Prediction</span>
             <span className="activity-card-mode">Recall</span>
+          </div>
+        </button>
+
+        <button
+          className="activity-card"
+          onClick={() => onSelectActivity('comprehension-check')}
+        >
+          <h2 className="activity-card-title">Comprehension Check</h2>
+          <p className="activity-card-desc">LLM-generated questions with explanatory feedback</p>
+          <p className="activity-card-meta">
+            {comprehensionSummary.attemptCount > 0
+              ? `Attempts: ${comprehensionSummary.attemptCount} · Last score: ${comprehensionSummary.lastScore}%`
+              : 'No attempts yet'}
+          </p>
+          <div className="activity-card-modes">
+            <span className="activity-card-mode">Factual</span>
+            <span className="activity-card-mode">Inference</span>
+            <span className="activity-card-mode">Evaluative</span>
           </div>
         </button>
 

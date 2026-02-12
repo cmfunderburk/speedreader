@@ -15,7 +15,10 @@ import type {
   PassageReviewState,
   SessionSnapshot,
   ComprehensionAttempt,
+  ComprehensionQuestionResult,
+  ComprehensionGeminiModel,
 } from '../types';
+import { COMPREHENSION_GEMINI_MODELS } from '../types';
 
 const STORAGE_KEYS = {
   schemaVersion: 'speedread_schema_version',
@@ -31,6 +34,7 @@ const STORAGE_KEYS = {
   dailyDate: 'speedread_daily_date',
   dailyArticleId: 'speedread_daily_article_id',
   comprehensionAttempts: 'speedread_comprehension_attempts',
+  comprehensionApiKey: 'speedread_comprehension_api_key',
 } as const;
 
 const CURRENT_STORAGE_SCHEMA_VERSION = 2;
@@ -46,6 +50,7 @@ export interface Settings {
   predictionLineWidth: PredictionLineWidth;
   predictionPreviewMode: PredictionPreviewMode;
   predictionPreviewSentenceCount: number;
+  comprehensionGeminiModel: ComprehensionGeminiModel;
   themePreference: ThemePreference;
   rampEnabled: boolean;
   rampCurve: RampCurve;
@@ -69,6 +74,7 @@ const DEFAULT_SETTINGS: Settings = {
     'paced-reading': 300,
     'active-recall': 300,
     training: 300,
+    'comprehension-check': 300,
   },
   defaultMode: 'word',
   customCharWidth: 8,
@@ -78,6 +84,7 @@ const DEFAULT_SETTINGS: Settings = {
   predictionLineWidth: 'medium',
   predictionPreviewMode: 'sentences',
   predictionPreviewSentenceCount: 2,
+  comprehensionGeminiModel: 'gemini-3-flash-preview',
   themePreference: 'dark',
   rampEnabled: false,
   rampCurve: 'linear',
@@ -101,6 +108,16 @@ function clampWpm(value: unknown, fallback: number): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(MIN_WPM, Math.min(MAX_WPM, Math.round(n)));
+}
+
+function parseComprehensionGeminiModel(value: unknown): ComprehensionGeminiModel {
+  if (
+    typeof value === 'string' &&
+    COMPREHENSION_GEMINI_MODELS.includes(value as ComprehensionGeminiModel)
+  ) {
+    return value as ComprehensionGeminiModel;
+  }
+  return DEFAULT_SETTINGS.comprehensionGeminiModel;
 }
 
 function loadStorageSchemaVersion(): number {
@@ -131,6 +148,7 @@ function migrateSettingsToV1(): void {
       'paced-reading': clampWpm(parsed.wpmByActivity?.['paced-reading'], legacyDefaultWpm),
       'active-recall': clampWpm(parsed.wpmByActivity?.['active-recall'], legacyDefaultWpm),
       training: clampWpm(parsed.wpmByActivity?.training, legacyDefaultWpm),
+      'comprehension-check': clampWpm(parsed.wpmByActivity?.['comprehension-check'], legacyDefaultWpm),
     } satisfies Record<Activity, number>;
 
     const nextLastSession = parsed.lastSession?.activity
@@ -338,6 +356,7 @@ export function loadSettings(): Settings {
       'paced-reading': clampWpm(parsedWpmByActivity?.['paced-reading'], legacyDefaultWpm),
       'active-recall': clampWpm(parsedWpmByActivity?.['active-recall'], legacyDefaultWpm),
       training: clampWpm(parsedWpmByActivity?.training, legacyDefaultWpm),
+      'comprehension-check': clampWpm(parsedWpmByActivity?.['comprehension-check'], legacyDefaultWpm),
     };
     // Keep legacy field aligned with paced reading for older code paths/migrations.
     settings.defaultWpm = settings.wpmByActivity['paced-reading'];
@@ -353,6 +372,7 @@ export function loadSettings(): Settings {
       1,
       Math.min(10, Math.round(settings.predictionPreviewSentenceCount || 2))
     );
+    settings.comprehensionGeminiModel = parseComprehensionGeminiModel(settings.comprehensionGeminiModel);
     settings.themePreference = settings.themePreference === 'light' || settings.themePreference === 'system'
       ? settings.themePreference
       : 'dark';
@@ -379,11 +399,13 @@ export function saveSettings(settings: Settings): void {
       'paced-reading': clampWpm(settings.wpmByActivity?.['paced-reading'], settings.defaultWpm),
       'active-recall': clampWpm(settings.wpmByActivity?.['active-recall'], settings.defaultWpm),
       training: clampWpm(settings.wpmByActivity?.training, settings.defaultWpm),
+      'comprehension-check': clampWpm(settings.wpmByActivity?.['comprehension-check'], settings.defaultWpm),
     },
     defaultWpm: clampWpm(
       settings.wpmByActivity?.['paced-reading'],
       clampWpm(settings.defaultWpm, DEFAULT_SETTINGS.defaultWpm)
     ),
+    comprehensionGeminiModel: parseComprehensionGeminiModel(settings.comprehensionGeminiModel),
   };
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(normalized));
 }
@@ -598,6 +620,38 @@ function normalizePassageReviewState(state: PassageReviewState | string | undefi
 
 const MAX_COMPREHENSION_ATTEMPTS = 200;
 
+const COMPREHENSION_DIMENSIONS = new Set(['factual', 'inference', 'structural', 'evaluative']);
+const COMPREHENSION_FORMATS = new Set(['multiple-choice', 'true-false', 'short-answer', 'essay']);
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isValidComprehensionQuestionResult(value: unknown): value is ComprehensionQuestionResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (!(
+    typeof obj.id === 'string' &&
+    typeof obj.prompt === 'string' &&
+    typeof obj.userAnswer === 'string' &&
+    typeof obj.modelAnswer === 'string' &&
+    typeof obj.feedback === 'string' &&
+    typeof obj.dimension === 'string' &&
+    COMPREHENSION_DIMENSIONS.has(obj.dimension) &&
+    typeof obj.format === 'string' &&
+    COMPREHENSION_FORMATS.has(obj.format) &&
+    isFiniteNumber(obj.score) &&
+    obj.score >= 0 &&
+    obj.score <= 3
+  )) {
+    return false;
+  }
+  if (obj.correct !== undefined && typeof obj.correct !== 'boolean') {
+    return false;
+  }
+  return true;
+}
+
 function isValidComprehensionAttempt(value: unknown): value is ComprehensionAttempt {
   if (typeof value !== 'object' || value === null) return false;
   const obj = value as Record<string, unknown>;
@@ -605,9 +659,15 @@ function isValidComprehensionAttempt(value: unknown): value is ComprehensionAtte
     typeof obj.id === 'string' &&
     typeof obj.articleId === 'string' &&
     typeof obj.articleTitle === 'string' &&
+    (obj.entryPoint === 'post-reading' || obj.entryPoint === 'launcher') &&
     Array.isArray(obj.questions) &&
-    typeof obj.overallScore === 'number' &&
-    typeof obj.createdAt === 'number'
+    obj.questions.every(isValidComprehensionQuestionResult) &&
+    isFiniteNumber(obj.overallScore) &&
+    obj.overallScore >= 0 &&
+    obj.overallScore <= 100 &&
+    isFiniteNumber(obj.createdAt) &&
+    isFiniteNumber(obj.durationMs) &&
+    obj.durationMs >= 0
   );
 }
 
@@ -618,7 +678,9 @@ export function loadComprehensionAttempts(): ComprehensionAttempt[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidComprehensionAttempt);
+    return parsed
+      .filter(isValidComprehensionAttempt)
+      .slice(0, MAX_COMPREHENSION_ATTEMPTS);
   } catch {
     return [];
   }
@@ -635,4 +697,106 @@ export function saveComprehensionAttempts(attempts: ComprehensionAttempt[]): voi
 export function appendComprehensionAttempt(attempt: ComprehensionAttempt): void {
   const existing = loadComprehensionAttempts();
   saveComprehensionAttempts([attempt, ...existing]);
+}
+
+export function loadComprehensionApiKey(): string | null {
+  runStorageMigrations();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.comprehensionApiKey);
+    if (!raw) return null;
+    const normalized = raw.trim();
+    return normalized.length > 0 ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveComprehensionApiKey(apiKey: string | null): void {
+  runStorageMigrations();
+  const normalized = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (normalized.length === 0) {
+    localStorage.removeItem(STORAGE_KEYS.comprehensionApiKey);
+    return;
+  }
+  localStorage.setItem(STORAGE_KEYS.comprehensionApiKey, normalized);
+}
+
+const COMPREHENSION_API_KEY_ID = 'comprehension-gemini' as const;
+
+export type ComprehensionApiKeyStorageMode = 'secure' | 'local' | 'unavailable';
+
+function getSecureKeyBridge() {
+  if (typeof window === 'undefined') return null;
+  return window.secureKeys ?? null;
+}
+
+export async function getComprehensionApiKeyStorageMode(): Promise<ComprehensionApiKeyStorageMode> {
+  const bridge = getSecureKeyBridge();
+  if (!bridge) return 'local';
+
+  try {
+    return (await bridge.isAvailable()) ? 'secure' : 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export async function loadPreferredComprehensionApiKey(): Promise<string | null> {
+  const bridge = getSecureKeyBridge();
+  if (!bridge) {
+    return loadComprehensionApiKey();
+  }
+
+  let available = false;
+  try {
+    available = await bridge.isAvailable();
+  } catch {
+    return loadComprehensionApiKey();
+  }
+  if (!available) {
+    return loadComprehensionApiKey();
+  }
+
+  const secureValue = await bridge.get(COMPREHENSION_API_KEY_ID);
+  if (secureValue && secureValue.trim().length > 0) {
+    // Clear legacy local key when secure key is present.
+    saveComprehensionApiKey(null);
+    return secureValue.trim();
+  }
+
+  // One-time migration from legacy localStorage key to secure storage.
+  const legacyValue = loadComprehensionApiKey();
+  if (legacyValue) {
+    await bridge.set(COMPREHENSION_API_KEY_ID, legacyValue);
+    saveComprehensionApiKey(null);
+    return legacyValue;
+  }
+
+  return null;
+}
+
+export async function savePreferredComprehensionApiKey(apiKey: string | null): Promise<void> {
+  const normalized = typeof apiKey === 'string' ? apiKey.trim() : '';
+  const bridge = getSecureKeyBridge();
+  if (!bridge) {
+    saveComprehensionApiKey(normalized || null);
+    return;
+  }
+
+  let available = false;
+  try {
+    available = await bridge.isAvailable();
+  } catch {
+    saveComprehensionApiKey(normalized || null);
+    return;
+  }
+  if (!available) {
+    // Fallback for Linux sessions where safeStorage/keyring is unavailable.
+    saveComprehensionApiKey(normalized || null);
+    return;
+  }
+
+  await bridge.set(COMPREHENSION_API_KEY_ID, normalized || null);
+  // Ensure no stale insecure value remains.
+  saveComprehensionApiKey(null);
 }
