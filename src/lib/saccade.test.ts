@@ -296,6 +296,60 @@ describe('figure handling', () => {
     expect(pages[1].lines.some((line) => line.type === 'figure')).toBe(true);
     expect(pages[1].lines.some((line) => line.text.includes('Gamma after figure.'))).toBe(false);
   });
+
+  it('parses equation image placeholders into renderable asset URLs', () => {
+    const text = '[EQN_IMAGE:1]';
+    const lines = flowTextIntoLines(
+      text,
+      80,
+      'file:///tmp/bayesian-stats/',
+      '/tmp/bayesian-stats/04-binomial-distribution.txt'
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      type: 'figure',
+      figureId: 'equation-1',
+      figureSrc: 'reader-asset://local?fileUrl=file%3A%2F%2F%2Ftmp%2Fbayesian-stats%2Fequation-images%2F04-binomial-distribution%2Feqn_001.jpg',
+    });
+  });
+
+  it('uses equation placeholders as saccade chunks instead of raw marker text', () => {
+    const text = '[EQN_IMAGE:12]';
+    const { pages, chunks } = tokenizeSaccade(
+      text,
+      15,
+      'file:///tmp/bayesian-stats/',
+      '/tmp/bayesian-stats/16-bayes-factor-posterior-odds.txt'
+    );
+
+    expect(pages.length).toBe(1);
+    expect(pages[0].lines[0].type).toBe('figure');
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].text).toBe('Equation 12');
+  });
+
+  it('keeps equations compact in page layout so surrounding text is not crowded out', () => {
+    const text = [
+      'Alpha line.',
+      '',
+      'Beta line.',
+      '',
+      '[EQN_IMAGE:1]',
+      '',
+      'Gamma line.',
+      '',
+      'Delta line.',
+    ].join('\n');
+    const { pages } = tokenizeSaccade(
+      text,
+      6,
+      'file:///tmp/bayesian-stats/',
+      '/tmp/bayesian-stats/04-binomial-distribution.txt'
+    );
+
+    expect(pages[0].lines.some((line) => line.type === 'figure' && line.isEquation)).toBe(true);
+  });
 });
 
 describe('segmentIntoParagraphs', () => {

@@ -30,6 +30,8 @@ export interface SaccadeLine {
   figureId?: string;
   figureSrc?: string;
   figureCaption?: string;
+  isEquation?: boolean;
+  equationIndex?: number;
 }
 
 export interface SaccadePage {

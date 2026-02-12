@@ -6,6 +6,7 @@ export const SACCADE_LINES_PER_PAGE = 15;
 export const SACCADE_FIGURE_MIN_LINE_SPAN_RATIO = 0.28;
 export const SACCADE_FIGURE_MIN_LINE_SPAN_FLOOR = 5;
 export const SACCADE_FIGURE_CAPTION_EXTRA_SPAN_MAX = 3;
+export const SACCADE_EQUATION_LINE_SPAN = 2;
 
 /**
  * Calculate how long a saccade line should be displayed, in milliseconds.
@@ -313,6 +314,7 @@ const HEADING_PATTERN = /^(#{1,6})\s+(.+)$/;
 const FIGURE_MARKER_PATTERN = /^\[FIGURE:([^\]]+)\]$/i;
 const FIGURE_URL_PATTERN = /^\[FIGURE_URL:(.+)\]$/i;
 const FIGURE_CAPTION_PATTERN = /^\[FIGURE\s+(.+)\]$/i;
+const EQUATION_IMAGE_PATTERN = /^\[EQN_IMAGE:(\d+)\]$/i;
 
 /**
  * Detect if a line is a markdown heading.
@@ -366,7 +368,8 @@ function wrapParagraph(text: string, lineWidth: number): SaccadeLine[] {
 export function flowTextIntoLines(
   text: string,
   lineWidth: number,
-  figureAssetBaseUrl?: string
+  figureAssetBaseUrl?: string,
+  sourcePath?: string
 ): SaccadeLine[] {
   const normalized = normalizeText(text);
 
@@ -382,6 +385,26 @@ export function flowTextIntoLines(
     const block = blocks[i];
     const figureMarker = block.match(FIGURE_MARKER_PATTERN);
     const figureUrlMarker = block.match(FIGURE_URL_PATTERN);
+    const equationMarker = block.match(EQUATION_IMAGE_PATTERN);
+
+    if (equationMarker) {
+      const equationIndex = Number(equationMarker[1]);
+      const equationSrc = buildEquationSrc(figureAssetBaseUrl, sourcePath, equationIndex);
+
+      lines.push({
+        text: `Equation ${equationIndex}`,
+        type: 'figure',
+        figureId: `equation-${equationIndex}`,
+        figureSrc: equationSrc,
+        isEquation: true,
+        equationIndex,
+      });
+
+      if (i < blocks.length - 1 && lines.length > 0 && lines[lines.length - 1].type !== 'blank') {
+        lines.push({ text: '', type: 'blank' });
+      }
+      continue;
+    }
 
     if (figureMarker || figureUrlMarker) {
       const figureId = figureMarker ? figureMarker[1].trim() : undefined;
@@ -464,6 +487,31 @@ function buildFigureSrc(assetBaseUrl: string | undefined, figureId?: string): st
   }
 }
 
+function buildEquationSrc(
+  assetBaseUrl: string | undefined,
+  sourcePath: string | undefined,
+  equationIndex: number
+): string | undefined {
+  if (!assetBaseUrl || !Number.isFinite(equationIndex) || equationIndex <= 0) return undefined;
+  const normalizedBase = assetBaseUrl.endsWith('/') ? assetBaseUrl : `${assetBaseUrl}/`;
+  const chapterName = sourcePath
+    ? sourcePath.split(/[\\/]/).pop()?.replace(/\.txt$/i, '')
+    : undefined;
+  if (!chapterName) return undefined;
+
+  const equationFile = `eqn_${String(equationIndex).padStart(3, '0')}.jpg`;
+  const encodedChapterName = encodeURIComponent(chapterName);
+  try {
+    const fileUrl = new URL(`equation-images/${encodedChapterName}/${equationFile}`, normalizedBase).toString();
+    if (fileUrl.startsWith('file://')) {
+      return `reader-asset://local?fileUrl=${encodeURIComponent(fileUrl)}`;
+    }
+    return fileUrl;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Group lines into raw pages.
  */
@@ -472,6 +520,7 @@ function estimateFigureLineSpan(
   figureBaseLineSpan: number
 ): number {
   if (line.type !== 'figure') return 1;
+  if (line.isEquation) return SACCADE_EQUATION_LINE_SPAN;
 
   // Reserve extra page budget for long captions so trailing text
   // is pushed to the next page instead of being clipped at viewport bottom.
@@ -535,9 +584,10 @@ export function countWords(text: string): number {
 export function tokenizeSaccade(
   text: string,
   linesPerPage: number = SACCADE_LINES_PER_PAGE,
-  figureAssetBaseUrl?: string
+  figureAssetBaseUrl?: string,
+  sourcePath?: string
 ): { pages: SaccadePage[]; chunks: Chunk[] } {
-  const lines = flowTextIntoLines(text, SACCADE_LINE_WIDTH, figureAssetBaseUrl);
+  const lines = flowTextIntoLines(text, SACCADE_LINE_WIDTH, figureAssetBaseUrl, sourcePath);
   const figureMinLineSpan = Math.max(
     SACCADE_FIGURE_MIN_LINE_SPAN_FLOOR,
     Math.round(linesPerPage * SACCADE_FIGURE_MIN_LINE_SPAN_RATIO)
@@ -561,7 +611,7 @@ export function tokenizeSaccade(
       }
 
       const chunkText = line.type === 'figure'
-        ? (line.figureCaption || `Figure ${line.figureId || ''}`).trim()
+        ? (line.figureCaption || line.text || `Figure ${line.figureId || ''}`).trim()
         : line.text;
 
       const chunk: Chunk = {

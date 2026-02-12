@@ -189,7 +189,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   useEffect(() => {
     if (article && mode === 'custom' && displayMode === 'rsvp') {
       const { chunks: newChunks, pages } = retokenize(
-        article.content, displayMode, mode, saccadeLength, linesPerPageRef.current, article.assetBaseUrl
+        article.content, displayMode, mode, saccadeLength, linesPerPageRef.current, article.assetBaseUrl, article.sourcePath
       );
       setSaccadePages(pages);
       setChunks(newChunks);
@@ -214,12 +214,13 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     tm: TokenMode,
     sacLen: number,
     pageLines: number = SACCADE_LINES_PER_PAGE,
-    figureAssetBaseUrl?: string
+    figureAssetBaseUrl?: string,
+    sourcePath?: string
   ): { chunks: Chunk[]; pages: SaccadePage[] } => {
     if (dm === 'training') {
       return { chunks: [], pages: [] };
     } else if (dm === 'saccade') {
-      const result = tokenizeSaccade(content, pageLines, figureAssetBaseUrl);
+      const result = tokenizeSaccade(content, pageLines, figureAssetBaseUrl, sourcePath);
       return { chunks: result.chunks, pages: result.pages };
     } else if (dm === 'recall') {
       const result = tokenizeRecall(content, pageLines);
@@ -361,7 +362,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         newMode,
         saccadeLengthRef.current,
         linesPerPageRef.current,
-        activeArticle.assetBaseUrl
+        activeArticle.assetBaseUrl,
+        activeArticle.sourcePath
       );
       setSaccadePages(pages);
 
@@ -401,7 +403,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         effectiveMode,
         saccadeLengthRef.current,
         linesPerPageRef.current,
-        activeArticle.assetBaseUrl
+        activeArticle.assetBaseUrl,
+        activeArticle.sourcePath
       );
       setSaccadePages(pages);
 
@@ -452,7 +455,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
         modeRef.current,
         saccadeLengthRef.current,
         lines,
-        activeArticle.assetBaseUrl
+        activeArticle.assetBaseUrl,
+        activeArticle.sourcePath
       );
       setSaccadePages(pages);
 
@@ -486,7 +490,8 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
       effectiveMode,
       saccadeLengthRef.current,
       linesPerPageRef.current,
-      newArticle.assetBaseUrl
+      newArticle.assetBaseUrl,
+      newArticle.sourcePath
     );
     setSaccadePages(pages);
     setChunks(newChunks);

@@ -258,6 +258,11 @@ button {
   align-items: center;
 }
 
+.saccade-line-equation {
+  margin: 0.2rem 0 0.5rem;
+  padding: 0.35rem 0.5rem;
+}
+
 .saccade-line-figure-active {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
@@ -272,6 +277,10 @@ button {
   object-fit: contain;
   border-radius: 6px;
   background: var(--bg-secondary);
+}
+
+.saccade-line-equation .saccade-figure-image {
+  max-height: clamp(24px, 7vh, 88px);
 }
 
 .saccade-figure-button {

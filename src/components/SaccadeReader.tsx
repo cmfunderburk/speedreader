@@ -33,7 +33,9 @@ export function SaccadeReader({ page, chunk, isPlaying, showPacer, wpm, saccadeS
     if (!readerEl || !pageEl) return;
 
     const lineElements = Array.from(pageEl.querySelectorAll<HTMLElement>(':scope > .saccade-line'));
-    const figureElements = lineElements.filter((lineEl) => lineEl.classList.contains('saccade-line-figure'));
+    const figureElements = lineElements.filter((lineEl) =>
+      lineEl.classList.contains('saccade-line-figure') && !lineEl.classList.contains('saccade-line-equation')
+    );
 
     if (figureElements.length === 0) {
       setFigureMaxHeightPx((prev) => (prev === null ? prev : null));
@@ -57,7 +59,7 @@ export function SaccadeReader({ page, chunk, isPlaying, showPacer, wpm, saccadeS
 
     for (const lineEl of lineElements) {
       const lineHeight = getOuterHeight(lineEl);
-      if (!lineEl.classList.contains('saccade-line-figure')) {
+      if (!lineEl.classList.contains('saccade-line-figure') || lineEl.classList.contains('saccade-line-equation')) {
         nonFigureHeight += lineHeight;
         continue;
       }
@@ -214,6 +216,7 @@ export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying,
     const figureClassName = [
       'saccade-line',
       'saccade-line-figure',
+      line.isEquation && 'saccade-line-equation',
       isActiveLine && 'saccade-line-figure-active',
     ].filter(Boolean).join(' ');
 
@@ -228,7 +231,7 @@ export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying,
               if (!line.figureSrc) return;
               onOpenFigure?.({
                 src: line.figureSrc,
-                alt: line.figureCaption || `Figure ${line.figureId || ''}`,
+                alt: line.figureCaption || line.text || `Figure ${line.figureId || ''}`,
                 caption: line.figureCaption,
               });
             }}
@@ -237,14 +240,14 @@ export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying,
           >
             <img
               src={line.figureSrc}
-              alt={line.figureCaption || `Figure ${line.figureId || ''}`}
+              alt={line.figureCaption || line.text || `Figure ${line.figureId || ''}`}
               className="saccade-figure-image"
               loading="lazy"
             />
           </button>
         ) : (
           <div className="saccade-figure-missing">
-            [Missing figure {line.figureId ? `: ${line.figureId}` : ''}]
+            [{line.isEquation ? 'Missing equation image' : `Missing figure${line.figureId ? `: ${line.figureId}` : ''}`}]
           </div>
         )}
         {line.figureCaption && (
