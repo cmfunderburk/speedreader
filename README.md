@@ -79,6 +79,7 @@ bun run typecheck
 bun run lint
 bun run test:run
 bun run verify
+bun run verify:ci
 bun run build
 ```
 
@@ -91,12 +92,13 @@ bun run electron:build
 ## Quality Gates
 Run these before commit/PR:
 - `bun run verify`
+- `bun run verify:ci` (matches CI lint + coverage + build gate)
 - `bun run typecheck`
 - `bun run lint`
 - `bun run test:run`
 - `bun run build`
 
-If `electron/**` changed, also run:
+If `electron/**` or Electron-relevant shared/type/config surfaces changed, also run:
 - `bun run electron:build`
 
 ## Project Docs

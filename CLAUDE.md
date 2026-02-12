@@ -13,8 +13,8 @@ Stack: React 18 + TypeScript + Vite, with optional Electron for local PDF/EPUB s
 src/
   components/     App shell + reading/exercise/training surfaces
   hooks/          useRSVP (core orchestrator), usePlaybackTimer, useKeyboard
-  lib/            tokenizer, saccade, rsvp timing, levenshtein, extractor,
-                  feeds, wikipedia, storage, trainingDrill
+  lib/            tokenizer, saccade, rsvp timing, levenshtein, feeds,
+                  wikipedia, storage, app/session transition planners
   types/          shared app/electron types
 electron/         main.ts, preload.ts, lib/ (pdf, epub, library, cleanup)
 shared/           Electron IPC contract types shared by preload + renderer
@@ -28,6 +28,23 @@ shared/           Electron IPC contract types shared by preload + renderer
 4. Prediction/Recall are self-paced and update scoring state per chunk.
 5. Training manages a read -> recall -> feedback state machine in `TrainingReader`.
 6. Local storage persists articles, settings, WPM by activity, training history, passages, and drill state.
+
+## Refactor Boundaries
+
+- `App.tsx` and `TrainingReader.tsx` remain orchestrators, with high-risk branching extracted into pure helpers under `src/lib/`.
+- App transition planners/selectors are centralized in modules like:
+  - `appViewState.ts`
+  - `appViewSelectors.ts`
+  - `sessionTransitions.ts`
+  - `appFeedTransitions.ts`
+- Training transition/scoring planners are centralized in modules like:
+  - `trainingPhase.ts`
+  - `trainingReading.ts`
+  - `trainingRecall.ts`
+  - `trainingFeedback.ts`
+  - `trainingScoring.ts`
+- `ContinueSessionInfo` is defined in `appViewSelectors.ts` and reused by `sessionTransitions.ts` to avoid type drift.
+- Electron preload/renderer API contracts are sourced from `shared/electron-contract.ts` (no duplicated local interface declarations).
 
 ## Training/Drill Invariants
 
@@ -63,8 +80,9 @@ bun run electron:dev
 bun run lint
 bun run test:run
 bun run verify
+bun run verify:ci
 bun run build
-bun run electron:build  # when electron/** changes
+bun run electron:build  # when electron/** or Electron-relevant shared/type/config files change
 ```
 
 ## Conventions
