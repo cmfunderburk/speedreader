@@ -2232,6 +2232,10 @@ button {
   color: #c45a4a;
 }
 
+.recall-forfeited {
+  color: var(--text-secondary);
+}
+
 .recall-input-word {
   display: inline-block;
   position: relative;
