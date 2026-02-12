@@ -75,4 +75,36 @@ describe('TrainingReader integration smoke', () => {
       expect(screen.queryByText('Training Complete')).not.toBeNull();
     });
   });
+
+  it('supports no-scaffold tokenized recall submission flow', async () => {
+    localStorage.setItem('speedread_training_scaffold', 'false');
+
+    const article: Article = {
+      id: 'a2',
+      title: 'Article 2',
+      content: 'Alpha beta',
+      source: 'Test',
+      addedAt: 1,
+      readPosition: 0,
+      isRead: false,
+    };
+
+    render(
+      <TrainingReader
+        article={article}
+        initialWpm={300}
+        onClose={vi.fn()}
+        onWpmChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Start from 1/i }));
+
+    const input = await screen.findByRole('textbox');
+    fireEvent.change(input, { target: { value: 'Alpha beta ' } });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Feedback')).not.toBeNull();
+    });
+  });
 });
