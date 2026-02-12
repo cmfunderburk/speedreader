@@ -10,3 +10,9 @@ contextBridge.exposeInMainWorld('library', {
   exportManifest: () => ipcRenderer.invoke('library:exportManifest'),
   importManifest: () => ipcRenderer.invoke('library:importManifest'),
 })
+
+contextBridge.exposeInMainWorld('secureKeys', {
+  isAvailable: () => ipcRenderer.invoke('secure-keys:isAvailable'),
+  get: (keyId) => ipcRenderer.invoke('secure-keys:get', keyId),
+  set: (keyId, value) => ipcRenderer.invoke('secure-keys:set', keyId, value),
+})

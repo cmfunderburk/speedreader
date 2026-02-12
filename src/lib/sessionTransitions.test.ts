@@ -143,6 +143,7 @@ describe('sessionTransitions', () => {
     });
 
     expect(planStartReadingFromPreview('training', article, 'word')).toBeNull();
+    expect(planStartReadingFromPreview('comprehension-check', article, 'word')).toBeNull();
   });
 
   it('plans continue-session transitions by activity', () => {
@@ -173,6 +174,16 @@ describe('sessionTransitions', () => {
       loadOptions: { displayMode: 'training' },
       nextView: { screen: 'active-training', article },
       autoPlay: false,
+    });
+
+    expect(planContinueSession({ article, activity: 'comprehension-check', displayMode: 'rsvp' })).toEqual({
+      article,
+      clearSnapshot: true,
+      syncWpmActivity: 'paced-reading',
+      loadOptions: { displayMode: 'saccade' },
+      saveLastSession: undefined,
+      nextView: { screen: 'active-reader' },
+      autoPlay: true,
     });
   });
 });

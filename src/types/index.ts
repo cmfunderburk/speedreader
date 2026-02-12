@@ -1,5 +1,5 @@
 // Activity: top-level grouping of display modes
-export type Activity = 'paced-reading' | 'active-recall' | 'training';
+export type Activity = 'paced-reading' | 'active-recall' | 'training' | 'comprehension-check';
 
 // Display mode: how text is presented
 export type DisplayMode = 'rsvp' | 'saccade' | 'prediction' | 'recall' | 'training';
@@ -135,4 +135,53 @@ export interface SessionSnapshot {
   };
   lastTransition?: 'read-to-recall' | 'read-to-prediction' | 'return-to-reading';
   updatedAt: number;
+}
+
+// Comprehension Check types
+export type ComprehensionDimension = 'factual' | 'inference' | 'structural' | 'evaluative';
+export type ComprehensionFormat = 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
+export const COMPREHENSION_GEMINI_MODELS = ['gemini-3-pro-preview', 'gemini-3-flash-preview'] as const;
+export type ComprehensionGeminiModel = typeof COMPREHENSION_GEMINI_MODELS[number];
+
+export interface ComprehensionQuestionResult {
+  id: string;
+  dimension: ComprehensionDimension;
+  format: ComprehensionFormat;
+  prompt: string;
+  userAnswer: string;
+  modelAnswer: string;
+  score: number;          // 0-3
+  feedback: string;
+  correct?: boolean;      // for auto-scored MC/TF
+}
+
+export interface ComprehensionAttempt {
+  id: string;
+  articleId: string;
+  articleTitle: string;
+  entryPoint: 'post-reading' | 'launcher';
+  questions: ComprehensionQuestionResult[];
+  overallScore: number;   // 0-100
+  createdAt: number;
+  durationMs: number;
+}
+
+export interface GeneratedComprehensionQuestion {
+  id: string;
+  dimension: ComprehensionDimension;
+  format: ComprehensionFormat;
+  prompt: string;
+  options?: string[];
+  correctOptionIndex?: number;
+  correctAnswer?: boolean;
+  modelAnswer: string;
+}
+
+export interface GeneratedComprehensionCheck {
+  questions: GeneratedComprehensionQuestion[];
+}
+
+export interface ComprehensionQuestionScore {
+  score: number;          // 0-3
+  feedback: string;
 }

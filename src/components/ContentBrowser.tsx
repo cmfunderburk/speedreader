@@ -9,6 +9,7 @@ const ACTIVITY_LABELS: Record<Activity, string> = {
   'paced-reading': 'Paced Reading',
   'active-recall': 'Active Recall',
   'training': 'Training',
+  'comprehension-check': 'Comprehension Check',
 };
 
 interface ContentBrowserProps {

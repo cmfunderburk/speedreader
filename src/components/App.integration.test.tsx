@@ -36,6 +36,7 @@ vi.mock('./HomeScreen', () => ({
     <div data-testid="home-screen">
       <button onClick={() => props.onSelectActivity('paced-reading')}>open-paced</button>
       <button onClick={() => props.onSelectActivity('active-recall')}>open-recall</button>
+      <button onClick={() => props.onSelectActivity('comprehension-check')}>open-comprehension</button>
       <button onClick={props.onStartDaily}>start-daily</button>
       {props.continueInfo && props.onContinue && (
         <button onClick={() => props.onContinue!(props.continueInfo!)}>continue-session</button>
@@ -82,6 +83,14 @@ vi.mock('./ProgressBar', () => ({
 
 vi.mock('./TrainingReader', () => ({
   TrainingReader: () => <div data-testid="training-reader">training</div>,
+}));
+
+vi.mock('./ComprehensionCheck', () => ({
+  ComprehensionCheck: (props: { onClose: () => void }) => (
+    <div data-testid="comprehension-check">
+      <button onClick={props.onClose}>close-comprehension</button>
+    </div>
+  ),
 }));
 
 describe('App integration smoke', () => {
@@ -227,6 +236,25 @@ describe('App integration smoke', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('home-screen')).not.toBeNull();
+    });
+  });
+
+  it('opens comprehension check from launcher flow and closes back home', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'open-comprehension' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('content-browser')).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'select-first' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('comprehension-check')).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'close-comprehension' }));
     await waitFor(() => {
       expect(screen.queryByTestId('home-screen')).not.toBeNull();
     });

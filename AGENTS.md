@@ -18,8 +18,10 @@
 - `bun run lint`: ESLint.
 - `bun run test`: Vitest watch mode.
 - `bun run test:run`: Vitest single run.
+- `bun run verify`: local quality gate (lint + tests + build).
+- `bun run verify:ci`: CI-equivalent gate (lint + coverage + build).
 - `bun run build`: type-check + web build.
-- `bun run electron:build`: Electron package build (required when touching `electron/**`).
+- `bun run electron:build`: Electron package build (required when touching `electron/**` or Electron-relevant shared contract/type/config files).
 
 ## Coding Conventions
 - TypeScript strict mode is enabled. Keep module boundaries typed.
@@ -32,9 +34,9 @@
 - Add regression tests for logic changes in core reading/training paths.
 - Prefer deterministic tests (fake timers for timing-dependent behavior).
 - Quality gates before commit/PR:
-  - `bun run lint`
-  - `bun run test:run`
-  - `bun run build`
+  - `bun run verify`
+  - `bun run verify:ci` (before PR)
+  - `bun run electron:build` when Electron-relevant files changed
 
 ## Product-Specific Repo Policy
 - Content-specific extraction scripts (especially copyrighted personal-source processing) are local-use tooling and should not be committed.

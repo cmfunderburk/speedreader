@@ -137,6 +137,13 @@ export function planContinueSession(info: ContinueSessionInfo): SessionLaunchPla
     };
   }
 
+  if (info.activity === 'comprehension-check') {
+    return {
+      ...createPacedReadingLaunchPlan(info.article, 'saccade'),
+      saveLastSession: undefined,
+    };
+  }
+
   return {
     article: info.article,
     clearSnapshot: true,

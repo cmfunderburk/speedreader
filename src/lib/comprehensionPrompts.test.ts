@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildGenerateCheckPrompt,
+  buildScoreAnswerPrompt,
+  parseGeneratedCheckResponse,
+  parseQuestionScoreResponse,
+} from './comprehensionPrompts';
+import type { GeneratedComprehensionQuestion } from '../types';
+
+const SAMPLE_PASSAGE = 'Mill argued for liberty while still respecting social limits.';
+
+const SAMPLE_QUESTION: GeneratedComprehensionQuestion = {
+  id: 'q1',
+  dimension: 'inference',
+  format: 'short-answer',
+  prompt: 'What does this imply about Mill and social authority?',
+  modelAnswer: 'He supports liberty but does not reject all social constraint.',
+};
+
+describe('comprehensionPrompts', () => {
+  it('builds generation prompt with clamped question count and passage', () => {
+    const prompt = buildGenerateCheckPrompt(SAMPLE_PASSAGE, 12);
+    expect(prompt).toContain('Generate exactly 10 questions');
+    expect(prompt).toContain('Return JSON only with this exact shape');
+    expect(prompt).toContain(SAMPLE_PASSAGE);
+  });
+
+  it('builds score prompt with rubric, question, and user answer', () => {
+    const prompt = buildScoreAnswerPrompt(SAMPLE_PASSAGE, SAMPLE_QUESTION, 'It is a balanced view.');
+    expect(prompt).toContain('Scoring rubric (0-3)');
+    expect(prompt).toContain(SAMPLE_QUESTION.prompt);
+    expect(prompt).toContain('It is a balanced view.');
+  });
+
+  it('parses generated check response from fenced JSON', () => {
+    const parsed = parseGeneratedCheckResponse(`
+\`\`\`json
+{
+  "questions": [
+    {
+      "dimension": "factual",
+      "format": "multiple-choice",
+      "prompt": "What does the passage describe?",
+      "options": ["A", "B", "C", "D"],
+      "correctOptionIndex": 1,
+      "modelAnswer": "Choice B is the best summary."
+    },
+    {
+      "id": "q2",
+      "dimension": "evaluative",
+      "format": "essay",
+      "prompt": "Is the argument convincing?",
+      "modelAnswer": "It is convincing because..."
+    }
+  ]
+}
+\`\`\`
+`);
+
+    expect(parsed.questions).toHaveLength(2);
+    expect(parsed.questions[0].id).toBe('q-1');
+    expect(parsed.questions[0].format).toBe('multiple-choice');
+    expect(parsed.questions[1].id).toBe('q2');
+    expect(parsed.questions[1].format).toBe('essay');
+  });
+
+  it('rejects generation payloads that contain no valid questions', () => {
+    expect(() =>
+      parseGeneratedCheckResponse(JSON.stringify({
+        questions: [
+          {
+            id: 'bad',
+            dimension: 'factual',
+            format: 'multiple-choice',
+            prompt: 'Bad question',
+            modelAnswer: 'Bad answer',
+          },
+        ],
+      }))
+    ).toThrow('Generated check contained no valid questions');
+  });
+
+  it('parses score response and clamps score into 0-3', () => {
+    const parsed = parseQuestionScoreResponse(`
+\`\`\`json
+{ "score": 5, "feedback": "Strong answer with enough evidence." }
+\`\`\`
+`);
+    expect(parsed).toEqual({
+      score: 3,
+      feedback: 'Strong answer with enough evidence.',
+    });
+  });
+
+  it('throws when score response misses feedback', () => {
+    expect(() => parseQuestionScoreResponse('{ "score": 2 }')).toThrow('Score response missing feedback');
+  });
+});

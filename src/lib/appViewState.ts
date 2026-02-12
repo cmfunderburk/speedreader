@@ -6,6 +6,7 @@ export type ViewState =
   | { screen: 'preview'; activity: Activity; article: Article }
   | { screen: 'active-reader' }
   | { screen: 'active-exercise' }
+  | { screen: 'active-comprehension'; article: Article; entryPoint: 'post-reading' | 'launcher' }
   | { screen: 'active-training'; article?: Article }
   | { screen: 'settings' }
   | { screen: 'library-settings' }
@@ -17,6 +18,7 @@ export type ViewAction =
   | { type: 'open-preview'; activity: Activity; article: Article }
   | { type: 'open-active-reader' }
   | { type: 'open-active-exercise' }
+  | { type: 'open-active-comprehension'; article: Article; entryPoint: 'post-reading' | 'launcher' }
   | { type: 'open-active-training'; article?: Article }
   | { type: 'open-settings' }
   | { type: 'open-library-settings' }
@@ -39,6 +41,8 @@ export function appViewStateReducer(_state: ViewState, action: ViewAction): View
       return { screen: 'active-reader' };
     case 'open-active-exercise':
       return { screen: 'active-exercise' };
+    case 'open-active-comprehension':
+      return { screen: 'active-comprehension', article: action.article, entryPoint: action.entryPoint };
     case 'open-active-training':
       return { screen: 'active-training', ...(action.article ? { article: action.article } : {}) };
     case 'open-settings':
@@ -64,6 +68,8 @@ export function viewStateToAction(state: ViewState): ViewAction {
       return { type: 'open-active-reader' };
     case 'active-exercise':
       return { type: 'open-active-exercise' };
+    case 'active-comprehension':
+      return { type: 'open-active-comprehension', article: state.article, entryPoint: state.entryPoint };
     case 'active-training':
       return { type: 'open-active-training', article: state.article };
     case 'settings':
