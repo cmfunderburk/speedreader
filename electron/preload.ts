@@ -47,11 +47,16 @@ export interface LibraryImportResult {
 }
 
 contextBridge.exposeInMainWorld('corpus', {
-  getInfo: (): Promise<Record<string, { available: boolean; totalArticles: number }>> =>
+  getInfo: (): Promise<Record<string, Record<string, { available: boolean; totalArticles: number }>>> =>
     ipcRenderer.invoke('corpus:getInfo'),
 
-  sampleArticle: (tier: string): Promise<{ title: string; text: string; domain: string; fk_grade: number; words: number; sentences: number } | null> =>
-    ipcRenderer.invoke('corpus:sampleArticle', tier),
+  sampleArticle: (
+    familyOrTier: string,
+    tier?: string,
+  ): Promise<{ title: string; text: string; domain: string; fk_grade: number; words: number; sentences: number } | null> =>
+    tier
+      ? ipcRenderer.invoke('corpus:sampleArticle', familyOrTier, tier)
+      : ipcRenderer.invoke('corpus:sampleArticle', familyOrTier),
 })
 
 contextBridge.exposeInMainWorld('library', {

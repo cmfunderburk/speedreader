@@ -1,0 +1,134 @@
+{
+  "works": [
+    {
+      "id": "hemingway-men-without-women",
+      "author": "Ernest Hemingway",
+      "title": "Men Without Women",
+      "source": { "type": "gutenberg", "id": 69683 },
+      "domain": "Prose Fiction",
+      "unit_type": "short_story",
+      "split_mode": "headings",
+      "tags": ["fiction", "short-stories", "modernist"]
+    },
+    {
+      "id": "fitzgerald-flappers-and-philosophers",
+      "author": "F. Scott Fitzgerald",
+      "title": "Flappers and Philosophers",
+      "source": { "type": "gutenberg", "id": 4368 },
+      "domain": "Prose Fiction",
+      "unit_type": "short_story",
+      "split_mode": "headings",
+      "tags": ["fiction", "short-stories", "jazz-age"]
+    },
+    {
+      "id": "fitzgerald-tales-of-the-jazz-age",
+      "author": "F. Scott Fitzgerald",
+      "title": "Tales of the Jazz Age",
+      "source": { "type": "gutenberg", "id": 6695 },
+      "domain": "Prose Fiction",
+      "unit_type": "short_story",
+      "split_mode": "headings",
+      "tags": ["fiction", "short-stories", "jazz-age"]
+    },
+    {
+      "id": "fitzgerald-all-the-sad-young-men",
+      "author": "F. Scott Fitzgerald",
+      "title": "All the Sad Young Men",
+      "source": { "type": "gutenberg", "id": 68229 },
+      "domain": "Prose Fiction",
+      "unit_type": "short_story",
+      "split_mode": "headings",
+      "tags": ["fiction", "short-stories", "jazz-age"]
+    },
+    {
+      "id": "woolf-monday-or-tuesday",
+      "author": "Virginia Woolf",
+      "title": "Monday or Tuesday",
+      "source": { "type": "gutenberg", "id": 29220 },
+      "domain": "Literary Fiction",
+      "unit_type": "short_story",
+      "split_mode": "headings",
+      "tags": ["fiction", "short-stories", "modernist"]
+    },
+    {
+      "id": "woolf-the-common-reader",
+      "author": "Virginia Woolf",
+      "title": "The Common Reader",
+      "source": { "type": "gutenberg", "id": 64457 },
+      "domain": "Essays",
+      "unit_type": "essay",
+      "split_mode": "headings",
+      "tags": ["essay", "literary-criticism", "modernist"]
+    },
+    {
+      "id": "mencken-prejudices-first",
+      "author": "H. L. Mencken",
+      "title": "Prejudices: First Series",
+      "source": { "type": "gutenberg", "id": 53538 },
+      "domain": "Essays",
+      "unit_type": "essay",
+      "split_mode": "headings",
+      "tags": ["essay", "criticism", "american-prose"]
+    },
+    {
+      "id": "mencken-prejudices-second",
+      "author": "H. L. Mencken",
+      "title": "Prejudices: Second Series",
+      "source": { "type": "gutenberg", "id": 53467 },
+      "domain": "Essays",
+      "unit_type": "essay",
+      "split_mode": "headings",
+      "tags": ["essay", "criticism", "american-prose"]
+    },
+    {
+      "id": "mencken-prejudices-third",
+      "author": "H. L. Mencken",
+      "title": "Prejudices: Third Series",
+      "source": { "type": "gutenberg", "id": 53474 },
+      "domain": "Essays",
+      "unit_type": "essay",
+      "split_mode": "headings",
+      "tags": ["essay", "criticism", "american-prose"]
+    },
+    {
+      "id": "mencken-prejudices-fourth",
+      "author": "H. L. Mencken",
+      "title": "Prejudices: Fourth Series",
+      "source": { "type": "gutenberg", "id": 67978 },
+      "domain": "Essays",
+      "unit_type": "essay",
+      "split_mode": "headings",
+      "tags": ["essay", "criticism", "american-prose"]
+    },
+    {
+      "id": "mencken-a-book-of-prefaces",
+      "author": "H. L. Mencken",
+      "title": "A Book of Prefaces",
+      "source": { "type": "gutenberg", "id": 19355 },
+      "domain": "Essays",
+      "unit_type": "essay",
+      "split_mode": "headings",
+      "tags": ["essay", "criticism", "american-prose"]
+    },
+    {
+      "id": "mencken-in-defense-of-women",
+      "author": "H. L. Mencken",
+      "title": "In Defense of Women",
+      "source": { "type": "gutenberg", "id": 1270 },
+      "domain": "Essays",
+      "unit_type": "essay",
+      "split_mode": "headings",
+      "tags": ["essay", "social-commentary", "american-prose"]
+    },
+    {
+      "id": "cather-youth-and-the-bright-medusa",
+      "author": "Willa Cather",
+      "title": "Youth and the Bright Medusa",
+      "source": { "type": "gutenberg", "id": 13555 },
+      "domain": "Prose Fiction",
+      "unit_type": "short_story",
+      "split_mode": "headings",
+      "tags": ["fiction", "short-stories", "american-prose"]
+    }
+  ]
+}

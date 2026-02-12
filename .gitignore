@@ -40,8 +40,12 @@ library/
 # Corpus build artifacts
 scripts/prepare-corpus/.corpus-cache/
 scripts/prepare-corpus/.corpus-cache-simple/
+scripts/prepare-corpus/.prose-cache/
 scripts/prepare-corpus/__pycache__/
 scripts/prepare-corpus/*.jsonl
+!scripts/prepare-corpus/corpus-prose-easy.jsonl
+!scripts/prepare-corpus/corpus-prose-medium.jsonl
+!scripts/prepare-corpus/corpus-prose-hard.jsonl
 
 # Scratchpad / session notes
 PLAN-*.md

@@ -22,6 +22,12 @@ extraResources:
     to: corpus/corpus-medium.jsonl
   - from: scripts/prepare-corpus/corpus-hard.jsonl
     to: corpus/corpus-hard.jsonl
+  - from: scripts/prepare-corpus/corpus-prose-easy.jsonl
+    to: corpus/corpus-prose-easy.jsonl
+  - from: scripts/prepare-corpus/corpus-prose-medium.jsonl
+    to: corpus/corpus-prose-medium.jsonl
+  - from: scripts/prepare-corpus/corpus-prose-hard.jsonl
+    to: corpus/corpus-prose-hard.jsonl
 
 extraMetadata:
   main: dist-electron/main.js

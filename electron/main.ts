@@ -45,14 +45,20 @@ interface CorpusArticle {
   sentences: number
 }
 
+type CorpusFamily = 'wiki' | 'prose'
 type CorpusTier = 'easy' | 'medium' | 'hard'
+const CORPUS_FAMILIES: CorpusFamily[] = ['wiki', 'prose']
 const CORPUS_TIERS: CorpusTier[] = ['easy', 'medium', 'hard']
 
 interface TierData {
   articles: CorpusArticle[]
 }
 
-const corpusCache = new Map<CorpusTier, TierData>()
+function corpusKey(family: CorpusFamily, tier: CorpusTier): string {
+  return `${family}:${tier}`
+}
+
+const corpusCache = new Map<string, TierData>()
 const SUPPORTED_BOOK_EXTENSIONS = new Set(['.pdf', '.epub', '.txt'])
 
 function normalizePath(inputPath: string): string | null {
@@ -107,17 +113,36 @@ function getCorpusDir(): string {
   return path.join(app.getPath('userData'), 'corpus')
 }
 
-function getCorpusPath(tier: CorpusTier): string {
-  return path.join(getCorpusDir(), `corpus-${tier}.jsonl`)
+function getCorpusPath(family: CorpusFamily, tier: CorpusTier): string {
+  const candidateDirs = app.isPackaged
+    ? [getCorpusDir()]
+    : [getCorpusDir(), getResourcePath('scripts', 'prepare-corpus')]
+
+  for (const corpusDir of candidateDirs) {
+    const explicitFamilyPath = path.join(corpusDir, `corpus-${family}-${tier}.jsonl`)
+    if (fs.existsSync(explicitFamilyPath)) {
+      return explicitFamilyPath
+    }
+    // Backward compatibility: pre-family naming for Wikipedia corpus.
+    if (family === 'wiki') {
+      const legacyWikiPath = path.join(corpusDir, `corpus-${tier}.jsonl`)
+      if (fs.existsSync(legacyWikiPath)) {
+        return legacyWikiPath
+      }
+    }
+  }
+
+  return path.join(candidateDirs[0], `corpus-${family}-${tier}.jsonl`)
 }
 
-function ensureCorpusLoaded(tier: CorpusTier): boolean {
-  if (corpusCache.has(tier)) return true
+function ensureCorpusLoaded(family: CorpusFamily, tier: CorpusTier): boolean {
+  const key = corpusKey(family, tier)
+  if (corpusCache.has(key)) return true
 
-  const corpusPath = getCorpusPath(tier)
+  const corpusPath = getCorpusPath(family, tier)
   if (!fs.existsSync(corpusPath)) return false
 
-  console.log(`Loading ${tier} corpus from ${corpusPath} ...`)
+  console.log(`Loading ${family}/${tier} corpus from ${corpusPath} ...`)
   const start = Date.now()
   const content = fs.readFileSync(corpusPath, 'utf-8')
   const lines = content.trim().split('\n')
@@ -132,8 +157,8 @@ function ensureCorpusLoaded(tier: CorpusTier): boolean {
     }
   }
 
-  corpusCache.set(tier, { articles })
-  console.log(`Corpus ${tier} loaded: ${articles.length} articles (${Date.now() - start}ms)`)
+  corpusCache.set(key, { articles })
+  console.log(`Corpus ${family}/${tier} loaded: ${articles.length} articles (${Date.now() - start}ms)`)
   return true
 }
 
@@ -351,22 +376,28 @@ ipcMain.handle('library:importManifest', async () => {
 
 // Corpus IPC handlers
 ipcMain.handle('corpus:getInfo', () => {
-  const info: Record<string, { available: boolean; totalArticles: number }> = {}
-  for (const tier of CORPUS_TIERS) {
-    const loaded = ensureCorpusLoaded(tier)
-    const data = corpusCache.get(tier)
-    info[tier] = {
-      available: loaded,
-      totalArticles: data?.articles.length ?? 0,
+  const info: Record<string, Record<string, { available: boolean; totalArticles: number }>> = {}
+  for (const family of CORPUS_FAMILIES) {
+    info[family] = {}
+    for (const tier of CORPUS_TIERS) {
+      const loaded = ensureCorpusLoaded(family, tier)
+      const data = corpusCache.get(corpusKey(family, tier))
+      info[family][tier] = {
+        available: loaded,
+        totalArticles: data?.articles.length ?? 0,
+      }
     }
   }
   return info
 })
 
-ipcMain.handle('corpus:sampleArticle', (_, tier: CorpusTier) => {
-  if (!CORPUS_TIERS.includes(tier)) return null
-  if (!ensureCorpusLoaded(tier)) return null
-  const data = corpusCache.get(tier)
+ipcMain.handle('corpus:sampleArticle', (_, familyOrTier: CorpusFamily | CorpusTier, maybeTier?: CorpusTier) => {
+  const family: CorpusFamily = maybeTier ? familyOrTier as CorpusFamily : 'wiki'
+  const tier: CorpusTier | undefined = maybeTier ?? (familyOrTier as CorpusTier)
+  if (!CORPUS_FAMILIES.includes(family)) return null
+  if (!tier || !CORPUS_TIERS.includes(tier)) return null
+  if (!ensureCorpusLoaded(family, tier)) return null
+  const data = corpusCache.get(corpusKey(family, tier))
   if (!data || data.articles.length === 0) return null
   return data.articles[Math.floor(Math.random() * data.articles.length)]
 })

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react';
 import type { Article, Chunk, TrainingParagraphResult, SaccadePacerStyle, SaccadeFocusTarget } from '../types';
-import type { CorpusArticle, CorpusInfo, CorpusTier } from '../types/electron';
+import type { CorpusArticle, CorpusFamily, CorpusInfo, CorpusTier } from '../types/electron';
 import { segmentIntoParagraphs, segmentIntoSentences, tokenizeParagraphSaccade, tokenizeParagraphRecall, calculateSaccadeLineDuration, countWords } from '../lib/saccade';
 import { isExactMatch, isWordKnown, isDetailWord } from '../lib/levenshtein';
 import { loadTrainingHistory, saveTrainingHistory, loadDrillState, saveDrillState } from '../lib/storage';
@@ -17,6 +17,11 @@ const SESSION_PRESETS = [
   { label: '10 min', value: 10 * 60 },
   { label: '20 min', value: 20 * 60 },
 ] as const;
+const DRILL_TIERS: CorpusTier[] = ['easy', 'medium', 'hard'];
+const DRILL_FAMILIES: Array<{ id: CorpusFamily; label: string }> = [
+  { id: 'wiki', label: 'Wikipedia' },
+  { id: 'prose', label: 'Prose' },
+];
 
 interface TrainingReaderProps {
   article?: Article;
@@ -146,6 +151,7 @@ export function TrainingReader({
 
   // --- Random Drill state ---
   const [drillMode, setDrillMode] = useState<DrillMode>('article');
+  const [drillCorpusFamily, setDrillCorpusFamily] = useState<CorpusFamily>(() => savedDrill?.corpusFamily ?? 'wiki');
   const [drillTier, setDrillTier] = useState<CorpusTier>(() => savedDrill?.tier ?? 'hard');
   const [corpusInfo, setCorpusInfo] = useState<CorpusInfo | null>(null);
   const [drillArticle, setDrillArticle] = useState<CorpusArticle | null>(null);
@@ -158,6 +164,7 @@ export function TrainingReader({
   const [drillRoundsCompleted, setDrillRoundsCompleted] = useState(0);
   const [drillScoreSum, setDrillScoreSum] = useState(0);
   const [drillWpmStart, setDrillWpmStart] = useState(initialWpm);
+  const [feedbackText, setFeedbackText] = useState('');
 
   const isDrill = drillMode === 'random';
 
@@ -168,8 +175,24 @@ export function TrainingReader({
 
   // Persist cross-session drill state whenever it changes
   useEffect(() => {
-    saveDrillState({ wpm, charLimit, rollingScores, tier: drillTier, autoAdjustDifficulty });
-  }, [wpm, charLimit, rollingScores, drillTier, autoAdjustDifficulty]);
+    saveDrillState({
+      wpm,
+      charLimit,
+      rollingScores,
+      corpusFamily: drillCorpusFamily,
+      tier: drillTier,
+      autoAdjustDifficulty,
+    });
+  }, [wpm, charLimit, rollingScores, drillCorpusFamily, drillTier, autoAdjustDifficulty]);
+
+  // Keep selected tier valid for the selected corpus family.
+  useEffect(() => {
+    const familyInfo = corpusInfo?.[drillCorpusFamily];
+    if (!familyInfo) return;
+    if (familyInfo[drillTier]?.available) return;
+    const fallbackTier = DRILL_TIERS.find(t => familyInfo[t]?.available);
+    if (fallbackTier) setDrillTier(fallbackTier);
+  }, [corpusInfo, drillCorpusFamily, drillTier]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const inputContainerRef = useRef<HTMLSpanElement>(null);
@@ -335,6 +358,9 @@ export function TrainingReader({
     const effectiveKnown = scoreDetails ? knownWords : knownWords - detailKnown;
     const score = effectiveTotal > 0 ? Math.round((effectiveKnown / effectiveTotal) * 100) : 0;
     const scoreNorm = score / 100;
+    // Snapshot the exact just-completed text so feedback remains stable
+    // even if adaptive drill settings change before render.
+    setFeedbackText(currentText);
 
     if (isDrill) {
       // Random drill: track stats, apply difficulty ladder
@@ -382,7 +408,7 @@ export function TrainingReader({
 
     lastDetailCountRef.current = detailTotal;
     setPhase('feedback');
-  }, [isDrill, currentParagraphIndex, wpm, charLimit, autoAdjustDifficulty, sessionHistory, onWpmChange, articleId, sentenceMode, currentSentenceIndex, sentenceChunks.length, scoreDetails]);
+  }, [isDrill, currentParagraphIndex, wpm, charLimit, autoAdjustDifficulty, sessionHistory, onWpmChange, articleId, sentenceMode, currentSentenceIndex, sentenceChunks.length, scoreDetails, currentText]);
 
   const processRecallTokens = useCallback((tokens: string[]) => {
     if (tokens.length === 0) return false;
@@ -620,6 +646,7 @@ export function TrainingReader({
     readingStepRef.current = 0;
     setReadingLeadIn(true);
     setCurrentSentenceIndex(0);
+    setFeedbackText('');
 
     if (isDrill) {
       // Check timed session expiry
@@ -638,7 +665,7 @@ export function TrainingReader({
         setPhase('reading');
       } else {
         // Article exhausted — fetch next
-        window.corpus?.sampleArticle(drillTier).then(article => {
+        window.corpus?.sampleArticle(drillCorpusFamily, drillTier).then(article => {
           if (article) {
             setDrillArticle(article);
             setDrillSentenceIndex(0);
@@ -660,7 +687,7 @@ export function TrainingReader({
         setPhase('reading');
       }
     }
-  }, [isDrill, shouldRepeat, currentParagraphIndex, paragraphs.length, sessionTimeLimit, sessionStartTime, drillSentenceIndex, drillRoundSentenceCount, drillSentences.length, drillTier]);
+  }, [isDrill, shouldRepeat, currentParagraphIndex, paragraphs.length, sessionTimeLimit, sessionStartTime, drillSentenceIndex, drillRoundSentenceCount, drillSentences.length, drillCorpusFamily, drillTier]);
 
   const handleStart = useCallback(() => {
     readingStepRef.current = 0;
@@ -675,7 +702,7 @@ export function TrainingReader({
       setSessionStartTime(Date.now());
       setDrillSentenceIndex(0);
 
-      window.corpus?.sampleArticle(drillTier).then(article => {
+      window.corpus?.sampleArticle(drillCorpusFamily, drillTier).then(article => {
         if (article) {
           setDrillArticle(article);
           setPhase('reading');
@@ -684,7 +711,7 @@ export function TrainingReader({
     } else {
       setPhase('reading');
     }
-  }, [isDrill, wpm, drillTier]);
+  }, [isDrill, wpm, drillCorpusFamily, drillTier]);
 
   const handleReturnToSetup = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -698,6 +725,7 @@ export function TrainingReader({
     setCurrentLineIndex(-1);
     readingStepRef.current = 0;
     setCurrentSentenceIndex(0);
+    setFeedbackText('');
     setPhase('setup');
   }, []);
 
@@ -751,11 +779,25 @@ export function TrainingReader({
   // Setup phase
   if (phase === 'setup') {
     const trainedCount = Object.keys(trainingHistory).length;
-    const anyTierAvailable = corpusInfo != null && (['easy', 'medium', 'hard'] as const).some(t => corpusInfo[t]?.available);
-    const tierInfo = corpusInfo?.[drillTier];
+    const anyTierAvailable = corpusInfo != null && DRILL_FAMILIES.some(({ id }) =>
+      DRILL_TIERS.some(t => corpusInfo[id]?.[t]?.available)
+    );
+    const selectedFamilyInfo = corpusInfo?.[drillCorpusFamily];
+    const tierInfo = selectedFamilyInfo?.[drillTier];
     const drillPacingText = autoAdjustDifficulty
       ? 'WPM and round length adjust based on your comprehension score.'
       : 'WPM stays fixed at your setting and each round is one sentence.';
+    const drillDescription = drillCorpusFamily === 'wiki'
+      ? (drillTier === 'easy'
+        ? 'Simple English Wikipedia (Good and Very Good articles). Read at saccade pace, then recall.'
+        : drillTier === 'hard'
+          ? 'Standard Wikipedia Good Article introductions. Read at saccade pace, then recall.'
+          : 'Readability-graded Standard Wikipedia articles (familiar vocabulary, moderate sentence length). Read at saccade pace, then recall.')
+      : (drillTier === 'easy'
+        ? 'Short stories and essays, easiest readability tier. Read at saccade pace, then recall.'
+        : drillTier === 'hard'
+          ? 'Short stories and essays, hardest readability tier. Read at saccade pace, then recall.'
+          : 'Short stories and essays, medium readability tier. Read at saccade pace, then recall.');
     return (
       <div className="training-reader">
         <div className="training-setup">
@@ -780,11 +822,7 @@ export function TrainingReader({
 
           <p className="training-setup-desc">
             {isDrill
-              ? drillTier === 'easy'
-                ? 'Simple English Wikipedia (Good and Very Good articles). Read at saccade pace, then recall.'
-                : drillTier === 'hard'
-                  ? 'Standard Wikipedia Good Article introductions. Read at saccade pace, then recall.'
-                  : 'Readability-graded Standard Wikipedia articles (familiar vocabulary, moderate sentence length). Read at saccade pace, then recall.'
+              ? drillDescription
               : 'Read each paragraph at saccade pace, then recall its words.'
             }
             {' '}{isDrill ? drillPacingText : 'WPM adjusts based on your comprehension score.'}
@@ -807,8 +845,24 @@ export function TrainingReader({
           {isDrill ? (
             <>
               <div className="training-mode-toggle">
-                {(['easy', 'medium', 'hard'] as const).map(t => {
-                  const ti = corpusInfo?.[t];
+                {DRILL_FAMILIES.map(({ id, label }) => {
+                  const available = DRILL_TIERS.some(t => corpusInfo?.[id]?.[t]?.available);
+                  return (
+                    <button
+                      key={id}
+                      className={`training-mode-btn${drillCorpusFamily === id ? ' training-mode-active' : ''}${!available ? ' training-mode-disabled' : ''}`}
+                      onClick={() => available && setDrillCorpusFamily(id)}
+                      disabled={!available}
+                      title={available ? `Use ${label} corpus` : `${label} corpus not installed`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="training-mode-toggle">
+                {DRILL_TIERS.map(t => {
+                  const ti = selectedFamilyInfo?.[t];
                   const available = ti?.available ?? false;
                   return (
                     <button
@@ -860,7 +914,7 @@ export function TrainingReader({
                 <span className="control-label">Show first-letter scaffolds</span>
               </label>
               <div className="training-setup-info">
-                {tierInfo?.totalArticles.toLocaleString() ?? 0} articles
+                {(tierInfo?.totalArticles ?? 0).toLocaleString()} articles
               </div>
               <button
                 onClick={handleStart}
@@ -1021,6 +1075,7 @@ export function TrainingReader({
   // Feedback phase
   if (phase === 'feedback') {
     const drillAdj = lastDrillAdjRef.current;
+    const feedbackContextText = (feedbackText || currentText).trim();
     const articleWpmDelta = (() => {
       if (lastScore < 90) return -25;
       if (lastScore >= 95) return +15;
@@ -1084,6 +1139,12 @@ export function TrainingReader({
           {shouldRepeat && (
             <div className="training-repeat-notice">
               Score below 90% — repeating paragraph
+            </div>
+          )}
+          {feedbackContextText && (
+            <div className="training-feedback-context">
+              <div className="training-feedback-context-label">Just read</div>
+              <div className="training-feedback-context-text">{feedbackContextText}</div>
             </div>
           )}
           <button onClick={handleContinue} className="control-btn control-btn-primary">

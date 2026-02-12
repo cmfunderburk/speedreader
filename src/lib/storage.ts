@@ -364,6 +364,7 @@ export interface DrillState {
   wpm: number;
   charLimit: number;
   rollingScores: number[];
+  corpusFamily?: 'wiki' | 'prose';
   tier?: 'easy' | 'medium' | 'hard';
   autoAdjustDifficulty?: boolean;
 }

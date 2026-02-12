@@ -66,6 +66,7 @@ export interface CorpusArticle {
   sentences: number
 }
 
+export type CorpusFamily = 'wiki' | 'prose'
 export type CorpusTier = 'easy' | 'medium' | 'hard'
 
 export interface CorpusTierInfo {
@@ -73,11 +74,11 @@ export interface CorpusTierInfo {
   totalArticles: number
 }
 
-export type CorpusInfo = Record<CorpusTier, CorpusTierInfo>
+export type CorpusInfo = Record<CorpusFamily, Record<CorpusTier, CorpusTierInfo>>
 
 export interface CorpusAPI {
   getInfo(): Promise<CorpusInfo>
-  sampleArticle(tier: CorpusTier): Promise<CorpusArticle | null>
+  sampleArticle(family: CorpusFamily, tier: CorpusTier): Promise<CorpusArticle | null>
 }
 
 declare global {

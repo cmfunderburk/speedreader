@@ -183,6 +183,7 @@ describe('storage-helpers with real storage functions', () => {
       wpm: 300,
       charLimit: 120,
       rollingScores: [0.9, 0.95],
+      corpusFamily: 'prose',
       tier: 'medium',
       autoAdjustDifficulty: true,
     });
@@ -192,6 +193,7 @@ describe('storage-helpers with real storage functions', () => {
       wpm: 300,
       charLimit: 120,
       rollingScores: [0.9, 0.95],
+      corpusFamily: 'prose',
       tier: 'medium',
       autoAdjustDifficulty: true,
     });

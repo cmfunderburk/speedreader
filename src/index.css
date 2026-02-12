@@ -2352,6 +2352,31 @@ button {
   font-weight: 500;
 }
 
+.training-feedback-context {
+  width: min(72ch, 100%);
+  text-align: left;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.training-feedback-context-label {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.35rem;
+}
+
+.training-feedback-context-text {
+  color: var(--text-primary);
+  line-height: 1.45;
+  max-height: 10rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .training-complete {
   text-align: center;
   padding: 2rem;
