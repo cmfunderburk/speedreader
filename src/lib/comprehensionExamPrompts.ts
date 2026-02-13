@@ -138,37 +138,246 @@ function parseSection(value: unknown): ComprehensionExamSection | null {
 function parseOptions(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const options = value.filter(isNonEmptyString).map((option) => option.trim());
-  if (options.length !== 4) return null;
+  if (options.length < 2 || options.length > 6) return null;
   const unique = new Set(options.map((option) => option.toLowerCase()));
   return unique.size === options.length ? options : null;
 }
 
-function parseGeneratedExamQuestion(
-  value: unknown,
-  index: number,
-  allowedSourceIds: Set<string>
-): GeneratedComprehensionQuestion {
-  if (typeof value !== 'object' || value === null) {
-    throw new Error(`Exam item ${index} is not an object`);
+interface FlattenedExamItem {
+  obj: Record<string, unknown>;
+  inheritedSection?: ComprehensionExamSection;
+  inheritedSourceArticleId?: string;
+}
+
+function normalizeToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[_\s]+/g, '-');
+}
+
+function parseFormatFlexible(value: unknown): ComprehensionFormat | null {
+  const strict = parseFormat(value);
+  if (strict) return strict;
+  if (typeof value !== 'string') return null;
+  const token = normalizeToken(value);
+  if (token === 'mcq' || token === 'multiple-choice' || token === 'multiplechoice') return 'multiple-choice';
+  if (token === 'true-false' || token === 'truefalse' || token === 'boolean') return 'true-false';
+  if (token === 'short-answer' || token === 'shortanswer') return 'short-answer';
+  if (token === 'long-answer' || token === 'longanswer') return 'essay';
+  return null;
+}
+
+function parseDimensionFlexible(value: unknown): ComprehensionDimension | null {
+  const strict = parseDimension(value);
+  if (strict) return strict;
+  if (typeof value !== 'string') return null;
+  const token = normalizeToken(value);
+  if (token === 'analysis' || token === 'analytical') return 'inference';
+  if (token === 'critical' || token === 'critique') return 'evaluative';
+  if (token === 'structure') return 'structural';
+  return null;
+}
+
+function parseSectionFlexible(value: unknown): ComprehensionExamSection | null {
+  const strict = parseSection(value);
+  if (strict) return strict;
+  if (typeof value !== 'string') return null;
+  const token = normalizeToken(value);
+  if (token === 'understanding') return 'interpretation';
+  if (token === 'integration') return 'synthesis';
+  return null;
+}
+
+function parseBooleanFlexible(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return null;
+  const token = normalizeToken(value);
+  if (token === 'true' || token === 't' || token === 'yes') return true;
+  if (token === 'false' || token === 'f' || token === 'no') return false;
+  return null;
+}
+
+function parseIntegerFlexible(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed)) return Number(trimmed);
+    const letter = trimmed.toUpperCase();
+    if (/^[A-Z]$/.test(letter)) {
+      return letter.charCodeAt(0) - 'A'.charCodeAt(0);
+    }
   }
-  const obj = value as Record<string, unknown>;
+  return null;
+}
 
-  const dimension = parseDimension(obj.dimension);
-  const format = parseFormat(obj.format);
-  const section = parseSection(obj.section);
-  const sourceArticleId = isNonEmptyString(obj.sourceArticleId) ? obj.sourceArticleId.trim() : null;
-  const prompt = isNonEmptyString(obj.prompt) ? obj.prompt.trim() : null;
-  const modelAnswer = isNonEmptyString(obj.modelAnswer) ? obj.modelAnswer.trim() : null;
+function pickString(obj: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = obj[key];
+    if (isNonEmptyString(value)) return value.trim();
+  }
+  return null;
+}
 
-  if (!dimension || !format || !section || !sourceArticleId || !prompt || !modelAnswer) {
+function inferSectionFromFormat(format: ComprehensionFormat | null): ComprehensionExamSection {
+  if (format === 'multiple-choice' || format === 'true-false') return 'recall';
+  return 'interpretation';
+}
+
+function inferDimensionFromSection(section: ComprehensionExamSection): ComprehensionDimension {
+  if (section === 'recall') return 'factual';
+  if (section === 'interpretation') return 'inference';
+  return 'evaluative';
+}
+
+function deriveModelAnswerFallback(
+  format: ComprehensionFormat,
+  options: string[] | null,
+  correctOptionIndex: number | null,
+  correctAnswer: boolean | null
+): string | null {
+  if (format === 'multiple-choice' && options && correctOptionIndex !== null) {
+    return `Correct option: ${options[correctOptionIndex]}`;
+  }
+  if (format === 'true-false' && correctAnswer !== null) {
+    return `Correct answer: ${correctAnswer ? 'True' : 'False'}.`;
+  }
+  return null;
+}
+
+function extractTopLevelItems(parsed: Record<string, unknown>): unknown[] {
+  if (Array.isArray(parsed.items)) return parsed.items;
+  if (Array.isArray(parsed.questions)) return parsed.questions;
+  if (Array.isArray(parsed.examItems)) return parsed.examItems;
+
+  const sections = parsed.sections;
+  if (typeof sections === 'object' && sections !== null && !Array.isArray(sections)) {
+    const sectionObj = sections as Record<string, unknown>;
+    const merged: unknown[] = [];
+    for (const section of COMPREHENSION_SECTIONS) {
+      const value = sectionObj[section];
+      if (Array.isArray(value)) {
+        merged.push({
+          section,
+          items: value,
+        });
+      }
+    }
+    if (merged.length > 0) return merged;
+  }
+
+  throw new Error('Generated exam JSON missing items array');
+}
+
+function isLikelyQuestionObject(obj: Record<string, unknown>): boolean {
+  return (
+    pickString(obj, ['prompt', 'question', 'stem', 'text']) !== null
+    || obj.format !== undefined
+    || obj.type !== undefined
+    || Array.isArray(obj.options)
+    || Array.isArray(obj.choices)
+  );
+}
+
+function flattenExamItems(
+  rawItems: unknown[],
+  inheritedSection?: ComprehensionExamSection,
+  inheritedSourceArticleId?: string,
+  depth: number = 0
+): FlattenedExamItem[] {
+  if (depth > 3) {
+    throw new Error('Exam item nesting exceeded supported depth');
+  }
+
+  const flattened: FlattenedExamItem[] = [];
+  for (const value of rawItems) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      continue;
+    }
+    const obj = value as Record<string, unknown>;
+    const nextSection = parseSectionFlexible(obj.section) ?? inheritedSection;
+    const nextSource = pickString(obj, ['sourceArticleId', 'sourceId', 'source', 'source_article_id']) ?? inheritedSourceArticleId;
+
+    const nested = Array.isArray(obj.items)
+      ? obj.items
+      : Array.isArray(obj.questions)
+        ? obj.questions
+        : null;
+
+    if (nested && !isLikelyQuestionObject(obj)) {
+      flattened.push(...flattenExamItems(nested, nextSection, nextSource, depth + 1));
+      continue;
+    }
+
+    flattened.push({
+      obj,
+      inheritedSection: nextSection,
+      inheritedSourceArticleId: nextSource,
+    });
+  }
+
+  return flattened;
+}
+
+function chooseSourceId(
+  rawSourceId: string | null,
+  allowedSourceIds: string[],
+  index: number
+): string | null {
+  if (rawSourceId && allowedSourceIds.includes(rawSourceId)) {
+    return rawSourceId;
+  }
+  if (allowedSourceIds.length === 1) {
+    return allowedSourceIds[0];
+  }
+  if (rawSourceId) {
+    const ordinalMatch = rawSourceId.match(/(\d+)/);
+    if (ordinalMatch) {
+      const ordinal = Number(ordinalMatch[1]) - 1;
+      if (ordinal >= 0 && ordinal < allowedSourceIds.length) {
+        return allowedSourceIds[ordinal];
+      }
+    }
+  }
+  if (allowedSourceIds.length > 1) {
+    return allowedSourceIds[index % allowedSourceIds.length];
+  }
+  return null;
+}
+
+function parseGeneratedExamQuestion(
+  item: FlattenedExamItem,
+  index: number,
+  allowedSourceIds: string[]
+): GeneratedComprehensionQuestion {
+  const { obj, inheritedSection, inheritedSourceArticleId } = item;
+
+  const options = parseOptions(obj.options) ?? parseOptions(obj.choices);
+  const correctOptionIndex = parseIntegerFlexible(
+    obj.correctOptionIndex ?? obj.correctIndex ?? obj.answerIndex ?? obj.answerOption
+  );
+  const correctAnswer = parseBooleanFlexible(
+    obj.correctAnswer ?? obj.answer ?? obj.isTrue
+  );
+
+  const format = parseFormatFlexible(obj.format ?? obj.type)
+    ?? (options ? 'multiple-choice' : null)
+    ?? (correctAnswer !== null ? 'true-false' : null)
+    ?? 'short-answer';
+  const section = parseSectionFlexible(obj.section ?? obj.phase)
+    ?? inheritedSection
+    ?? inferSectionFromFormat(format);
+  const dimension = parseDimensionFlexible(obj.dimension ?? obj.skill ?? obj.competency)
+    ?? inferDimensionFromSection(section);
+
+  const sourceRaw = pickString(obj, ['sourceArticleId', 'sourceId', 'source', 'source_article_id']) ?? inheritedSourceArticleId ?? null;
+  const sourceArticleId = chooseSourceId(sourceRaw, allowedSourceIds, index);
+  const prompt = pickString(obj, ['prompt', 'question', 'stem', 'text']);
+  const modelAnswer = pickString(obj, ['modelAnswer', 'answer', 'explanation', 'rationale'])
+    ?? deriveModelAnswerFallback(format, options, correctOptionIndex, correctAnswer);
+
+  if (!sourceArticleId || !prompt || !modelAnswer) {
     throw new Error(`Exam item ${index} is missing required fields`);
   }
 
-  if (!allowedSourceIds.has(sourceArticleId)) {
-    throw new Error(`Exam item ${index} references unknown source ${sourceArticleId}`);
-  }
-
-  const id = isNonEmptyString(obj.id) ? obj.id.trim() : `exam-${index + 1}`;
+  const id = pickString(obj, ['id', 'questionId']) ?? `exam-${index + 1}`;
   const question: GeneratedComprehensionQuestion = {
     id,
     dimension,
@@ -180,11 +389,7 @@ function parseGeneratedExamQuestion(
   };
 
   if (format === 'multiple-choice') {
-    const options = parseOptions(obj.options);
-    const correctOptionIndex = typeof obj.correctOptionIndex === 'number'
-      ? Math.trunc(obj.correctOptionIndex)
-      : Number.NaN;
-    if (!options || !Number.isInteger(correctOptionIndex) || correctOptionIndex < 0 || correctOptionIndex >= options.length) {
+    if (!options || correctOptionIndex === null || correctOptionIndex < 0 || correctOptionIndex >= options.length) {
       throw new Error(`Exam item ${index} has invalid multiple-choice payload`);
     }
     question.options = options;
@@ -192,10 +397,10 @@ function parseGeneratedExamQuestion(
   }
 
   if (format === 'true-false') {
-    if (typeof obj.correctAnswer !== 'boolean') {
+    if (correctAnswer === null) {
       throw new Error(`Exam item ${index} has invalid true-false payload`);
     }
-    question.correctAnswer = obj.correctAnswer;
+    question.correctAnswer = correctAnswer;
   }
 
   return question;
@@ -339,13 +544,11 @@ export function buildGenerateExamPrompt(args: GenerateExamPromptArgs): string {
 
 export function parseGeneratedExamResponse(args: ParseGeneratedExamArgs): GeneratedComprehensionCheck {
   const parsed = parseRawJsonObject(args.raw);
-  if (!Array.isArray(parsed.items)) {
-    throw new Error('Generated exam JSON missing items array');
-  }
+  const rawItems = extractTopLevelItems(parsed);
+  const flattened = flattenExamItems(rawItems);
 
-  const selectedSourceIds = new Set(args.selectedSourceArticleIds);
-  const questions = parsed.items.map((item, index) =>
-    parseGeneratedExamQuestion(item, index, selectedSourceIds)
+  const questions = flattened.map((item, index) =>
+    parseGeneratedExamQuestion(item, index, args.selectedSourceArticleIds)
   );
 
   assertItemInvariants(questions, args.preset);
