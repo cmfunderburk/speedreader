@@ -96,6 +96,12 @@ function stripHtml(html: string): string {
   return doc.body.textContent || '';
 }
 
+function parseFeedTimestamp(pubDate: string | undefined, fallback: number): number {
+  if (!pubDate) return fallback;
+  const parsed = Date.parse(pubDate);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /**
  * Fetch and parse a feed URL.
  */
@@ -119,6 +125,7 @@ export async function fetchFeed(url: string): Promise<{ feed: Feed; articles: Ar
   };
 
   const source = new URL(url).hostname.replace('www.', '');
+  const now = Date.now();
 
   const articles: Article[] = parsed.items.map(item => {
     const content = stripHtml(item.content);
@@ -129,7 +136,7 @@ export async function fetchFeed(url: string): Promise<{ feed: Feed; articles: Ar
       content,
       source,
       url: item.link,
-      addedAt: item.pubDate ? new Date(item.pubDate).getTime() : Date.now(),
+      addedAt: parseFeedTimestamp(item.pubDate, now),
       readPosition: 0,
       isRead: false,
       ...metrics,

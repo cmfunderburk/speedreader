@@ -185,17 +185,30 @@ export function App() {
   useEffect(() => {
     if (!window.library) return;
     const PREFIX = 'Library: ';
+    let cancelled = false;
+
     (async () => {
       const sources = await window.library!.getSources();
       const filenameToGroup = new Map<string, string>();
-      for (const source of sources) {
-        const items = await window.library!.listBooks(source.path);
-        for (const item of items) {
-          if (item.parentDir) {
-            filenameToGroup.set(item.name, formatBookName(item.parentDir));
-          }
+      const listResults = await Promise.allSettled(
+        sources.map((source) => window.library!.listBooks(source.path))
+      );
+
+      if (cancelled) return;
+
+      listResults.forEach((result, index) => {
+        if (result.status !== 'fulfilled') {
+          const source = sources[index];
+          console.warn(`Failed to backfill Library groups for source: ${source?.name ?? source?.path ?? 'unknown'}`, result.reason);
+          return;
         }
-      }
+
+        for (const item of result.value) {
+          if (!item.parentDir) continue;
+          filenameToGroup.set(item.name, formatBookName(item.parentDir));
+        }
+      });
+
       setArticles(prev => {
         let changed = false;
         const updated = prev.map(article => {
@@ -211,7 +224,14 @@ export function App() {
         }
         return prev;
       });
-    })();
+    })().catch((err) => {
+      if (cancelled) return;
+      console.warn('Library group backfill failed', err);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());

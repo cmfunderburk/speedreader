@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Chunk, SaccadePage, SaccadeLine, SaccadePacerStyle, SaccadeFocusTarget } from '../types';
 import { computeLineFixations, calculateSaccadeLineDuration, computeFocusTargets, computeFocusTargetTimings, computeWordFocusTargetsAndFixations } from '../lib/saccade';
@@ -16,6 +16,11 @@ interface SaccadeReaderProps {
   saccadeMergeShortFunctionWords?: boolean;
   saccadeLength?: number;
 }
+
+const EMPTY_WORD_FOCUS_DATA = {
+  targets: [] as Array<{ startChar: number; endChar: number }>,
+  fixations: [] as number[],
+};
 
 export function SaccadeReader({ page, chunk, isPlaying, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadePacerStyle, saccadeFocusTarget, saccadeMergeShortFunctionWords, saccadeLength }: SaccadeReaderProps) {
   const readerRef = useRef<HTMLDivElement | null>(null);
@@ -122,6 +127,10 @@ export function SaccadeReader({ page, chunk, isPlaying, showPacer, wpm, saccadeS
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [magnifiedFigure]);
 
+  const handleOpenFigure = useCallback((figure: { src: string; alt: string; caption?: string }) => {
+    setMagnifiedFigure(figure);
+  }, []);
+
   if (!page) {
     return (
       <div className="reader saccade-reader">
@@ -156,7 +165,7 @@ export function SaccadeReader({ page, chunk, isPlaying, showPacer, wpm, saccadeS
             saccadeFocusTarget={saccadeFocusTarget}
             saccadeMergeShortFunctionWords={saccadeMergeShortFunctionWords}
             saccadeLength={saccadeLength}
-            onOpenFigure={(figure) => setMagnifiedFigure(figure)}
+            onOpenFigure={handleOpenFigure}
           />
         ))}
       </div>
@@ -203,8 +212,119 @@ export interface SaccadeLineProps {
   onOpenFigure?: (figure: { src: string; alt: string; caption?: string }) => void;
 }
 
-export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying, isFutureLine, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadePacerStyle, saccadeFocusTarget, saccadeMergeShortFunctionWords, saccadeLength, onOpenFigure }: SaccadeLineProps) {
-  if (line.type === 'blank') {
+export const SaccadeLineComponent = memo(function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying, isFutureLine, showPacer, wpm, saccadeShowOVP, saccadeShowSweep, saccadePacerStyle, saccadeFocusTarget, saccadeMergeShortFunctionWords, saccadeLength, onOpenFigure }: SaccadeLineProps) {
+  const isBlank = line.type === 'blank';
+  const isFigure = line.type === 'figure';
+  const isHeading = line.type === 'heading';
+  const textLength = line.text.length;
+
+  // Character-based line duration: 5 chars = 1 word at configured WPM
+  const lineDuration = useMemo(
+    () => calculateSaccadeLineDuration(textLength, wpm),
+    [textLength, wpm]
+  );
+  const pacerStyle = saccadePacerStyle ?? (saccadeShowSweep === false ? 'focus' : 'sweep');
+  const focusTarget = saccadeFocusTarget ?? 'fixation';
+  const useWordFocus = pacerStyle === 'focus' && focusTarget === 'word';
+
+  const fixationBasedFixations = useMemo(
+    () => (((!isBlank && !isFigure) && saccadeLength && line.text)
+      ? computeLineFixations(line.text, saccadeLength)
+      : []),
+    [isBlank, isFigure, line.text, saccadeLength]
+  );
+  const wordFocusData = useMemo(
+    () => (useWordFocus && !isBlank && !isFigure
+      ? computeWordFocusTargetsAndFixations(line.text, saccadeMergeShortFunctionWords ?? false)
+      : EMPTY_WORD_FOCUS_DATA),
+    [isBlank, isFigure, line.text, saccadeMergeShortFunctionWords, useWordFocus]
+  );
+  const fixations = useWordFocus
+    ? wordFocusData.fixations
+    : fixationBasedFixations;
+
+  const focusTargets = useMemo(() => {
+    if (isBlank || isFigure) return [];
+    if (pacerStyle !== 'focus') return [];
+    if (useWordFocus) return wordFocusData.targets;
+    return computeFocusTargets(line.text, fixations);
+  }, [fixations, isBlank, isFigure, line.text, pacerStyle, useWordFocus, wordFocusData.targets]);
+  const useSweepBar = !isBlank && !isFigure && showPacer && pacerStyle === 'sweep' && isActiveLine && lineDuration > 0;
+  const useFocusTargets = !isBlank && !isFigure && showPacer && pacerStyle === 'focus' && isActiveLine && lineDuration > 0 && focusTargets.length > 0;
+  const focusTimingTargets = useMemo(() => (
+    useFocusTargets && focusTarget !== 'word'
+      ? computeFixationTimingTargets(line.text, focusTargets)
+      : focusTargets
+  ), [focusTarget, focusTargets, line.text, useFocusTargets]);
+  const focusTimings = useMemo(() => (
+    useFocusTargets
+      ? computeFocusTargetTimings(line.text, focusTimingTargets, focusTarget === 'word' ? 'word' : 'char')
+      : []
+  ), [focusTarget, focusTimingTargets, line.text, useFocusTargets]);
+  const focusSegments = useMemo(() => (
+    useFocusTargets
+      ? computeFocusRenderSegments(line.text, focusTargets, focusTimings)
+      : []
+  ), [focusTargets, focusTimings, line.text, useFocusTargets]);
+
+  // Sweep-synced ORP decoloring: ORPs start amber, turn plain as sweep passes
+  const sweepDecolors = useSweepBar && saccadeShowOVP && fixations.length > 0;
+  const focusDecolors = useFocusTargets && saccadeShowOVP && fixations.length > 0;
+
+  // Static amber ORPs: all lines when pacer off, or current + future lines when pacer on
+  const showStaticOVP = saccadeShowOVP && !sweepDecolors && !focusDecolors && (
+    !showPacer || isActiveLine || isFutureLine
+  );
+
+  const keyframeBlocks = useMemo(() => {
+    const blocks: string[] = [];
+
+    if (useSweepBar) {
+      blocks.push(
+        `@keyframes sweep-${lineIndex} { from { width: 0ch; } to { width: ${textLength}ch; } }`
+      );
+    }
+    if (sweepDecolors) {
+      blocks.push(generateDecolorKeyframes(lineIndex, fixations, textLength));
+    }
+    if (focusDecolors) {
+      blocks.push(generateFocusDecolorKeyframes(lineIndex, fixations, focusTargets, focusTimings));
+    }
+    if (useFocusTargets && focusSegments.length > 0) {
+      blocks.push(generateFocusKeyframes(lineIndex, focusSegments.map(({ startPct, endPct }) => ({ startPct, endPct }))));
+    }
+
+    return blocks;
+  }, [
+    useSweepBar,
+    lineIndex,
+    textLength,
+    sweepDecolors,
+    focusDecolors,
+    fixations,
+    focusTargets,
+    focusTimings,
+    useFocusTargets,
+    focusSegments,
+  ]);
+
+  const decolorConfig = useMemo(() => (
+    (sweepDecolors || focusDecolors) ? { lineIndex, lineDuration, isPlaying } : undefined
+  ), [focusDecolors, isPlaying, lineDuration, lineIndex, sweepDecolors]);
+  const focusConfig = useMemo(() => (
+    useFocusTargets && focusSegments.length > 0
+      ? { lineIndex, lineDuration, isPlaying, focusSegments }
+      : undefined
+  ), [focusSegments, isPlaying, lineDuration, lineIndex, useFocusTargets]);
+
+  const lineClasses = [
+    'saccade-line',
+    isHeading && 'saccade-line-heading',
+    useSweepBar && 'saccade-line-sweep',
+    useFocusTargets && 'saccade-line-focus',
+  ].filter(Boolean).join(' ');
+
+  if (isBlank) {
     return (
       <div className="saccade-line">
         <span>{'\u00A0'}</span>
@@ -212,7 +332,7 @@ export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying,
     );
   }
 
-  if (line.type === 'figure') {
+  if (isFigure) {
     const figureClassName = [
       'saccade-line',
       'saccade-line-figure',
@@ -257,82 +377,6 @@ export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying,
     );
   }
 
-  const isHeading = line.type === 'heading';
-  const textLength = line.text.length;
-
-  // Character-based line duration: 5 chars = 1 word at configured WPM
-  const lineDuration = calculateSaccadeLineDuration(textLength, wpm);
-  const pacerStyle = saccadePacerStyle ?? (saccadeShowSweep === false ? 'focus' : 'sweep');
-  const focusTarget = saccadeFocusTarget ?? 'fixation';
-  const useWordFocus = pacerStyle === 'focus' && focusTarget === 'word';
-
-  const fixationBasedFixations = (saccadeLength && line.text)
-    ? computeLineFixations(line.text, saccadeLength)
-    : [];
-  const wordFocusData = useWordFocus
-    ? computeWordFocusTargetsAndFixations(line.text, saccadeMergeShortFunctionWords ?? false)
-    : { targets: [], fixations: [] };
-  const fixations = useWordFocus
-    ? wordFocusData.fixations
-    : fixationBasedFixations;
-
-  const focusTargets = pacerStyle !== 'focus'
-    ? []
-    : useWordFocus
-      ? wordFocusData.targets
-      : computeFocusTargets(line.text, fixations);
-  const useSweepBar = showPacer && pacerStyle === 'sweep' && isActiveLine && lineDuration > 0;
-  const useFocusTargets = showPacer && pacerStyle === 'focus' && isActiveLine && lineDuration > 0 && focusTargets.length > 0;
-  const focusTimingTargets = useFocusTargets && focusTarget !== 'word'
-    ? computeFixationTimingTargets(line.text, focusTargets)
-    : focusTargets;
-  const focusTimings = useFocusTargets
-    ? computeFocusTargetTimings(line.text, focusTimingTargets, focusTarget === 'word' ? 'word' : 'char')
-    : [];
-  const focusSegments = useFocusTargets
-    ? computeFocusRenderSegments(line.text, focusTargets, focusTimings)
-    : [];
-
-  // Sweep-synced ORP decoloring: ORPs start amber, turn plain as sweep passes
-  const sweepDecolors = useSweepBar && saccadeShowOVP && fixations.length > 0;
-  const focusDecolors = useFocusTargets && saccadeShowOVP && fixations.length > 0;
-
-  // Static amber ORPs: all lines when pacer off, or current + future lines when pacer on
-  const showStaticOVP = saccadeShowOVP && !sweepDecolors && !focusDecolors && (
-    !showPacer || isActiveLine || isFutureLine
-  );
-
-  // Generate keyframes
-  const keyframeBlocks: string[] = [];
-
-  if (useSweepBar) {
-    keyframeBlocks.push(
-      `@keyframes sweep-${lineIndex} { from { width: 0ch; } to { width: ${textLength}ch; } }`
-    );
-  }
-
-  if (sweepDecolors) {
-    keyframeBlocks.push(generateDecolorKeyframes(lineIndex, fixations, textLength));
-  }
-  if (focusDecolors) {
-    keyframeBlocks.push(generateFocusDecolorKeyframes(lineIndex, fixations, focusTargets, focusTimings));
-  }
-  if (useFocusTargets && focusSegments.length > 0) {
-    keyframeBlocks.push(generateFocusKeyframes(lineIndex, focusSegments.map(({ startPct, endPct }) => ({ startPct, endPct }))));
-  }
-
-  const decolorConfig = (sweepDecolors || focusDecolors) ? { lineIndex, lineDuration, isPlaying } : undefined;
-  const focusConfig = useFocusTargets && focusSegments.length > 0
-    ? { lineIndex, lineDuration, isPlaying, focusSegments }
-    : undefined;
-
-  const lineClasses = [
-    'saccade-line',
-    isHeading && 'saccade-line-heading',
-    useSweepBar && 'saccade-line-sweep',
-    useFocusTargets && 'saccade-line-focus',
-  ].filter(Boolean).join(' ');
-
   return (
     <div className={lineClasses} key={isActiveLine ? lineIndex : undefined}>
       {keyframeBlocks.length > 0 && <style>{keyframeBlocks.join(' ')}</style>}
@@ -350,7 +394,9 @@ export function SaccadeLineComponent({ line, lineIndex, isActiveLine, isPlaying,
         : renderLineText(line.text, isHeading, showStaticOVP || sweepDecolors, fixations, decolorConfig)}
     </div>
   );
-}
+});
+
+SaccadeLineComponent.displayName = 'SaccadeLineComponent';
 
 /**
  * Generate per-ORP @keyframes that transition from amber to plain text

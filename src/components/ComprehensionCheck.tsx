@@ -154,6 +154,16 @@ export function ComprehensionCheck({
   const [results, setResults] = useState<CheckResults | null>(null);
   const startTimeRef = useRef(Date.now());
   const sourceArticlesRef = useRef(sourceArticles);
+  const loadRequestIdRef = useRef(0);
+  const submitRequestIdRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     sourceArticlesRef.current = sourceArticles;
@@ -224,6 +234,10 @@ export function ComprehensionCheck({
   const currentQuestion = orderedQuestions[currentIndex] ?? null;
 
   const loadQuestions = useCallback(async () => {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+    const isStaleRequest = () => !isMountedRef.current || loadRequestIdRef.current !== requestId;
+
     setStatus('loading');
     setLoadingMessage(isExamMode ? 'Preparing exam context...' : 'Generating questions...');
     setLoadingElapsedSeconds(0);
@@ -251,13 +265,17 @@ export function ComprehensionCheck({
             setLoadingMessage(message);
           },
         });
+        if (isStaleRequest()) return;
         setQuestions(generated.questions);
       } else {
         const generated = await adapter.generateCheck(article.content, questionCount);
+        if (isStaleRequest()) return;
         setQuestions(generated.questions);
       }
+      if (isStaleRequest()) return;
       setStatus('ready');
     } catch (error) {
+      if (isStaleRequest()) return;
       const rawMessage = error instanceof Error ? error.message : 'Failed to generate comprehension check';
       const missingApiKey = rawMessage.trim() === MISSING_API_KEY_ERROR;
       const friendlyExamError = isExamMode && isLikelyExamFormatError(rawMessage);
@@ -294,6 +312,11 @@ export function ComprehensionCheck({
 
   const submit = useCallback(async () => {
     if (orderedQuestions.length === 0) return;
+
+    const requestId = submitRequestIdRef.current + 1;
+    submitRequestIdRef.current = requestId;
+    const isStaleRequest = () => !isMountedRef.current || submitRequestIdRef.current !== requestId;
+
     setStatus('submitting');
 
     const scoreQuestion = async (question: GeneratedComprehensionQuestion): Promise<ComprehensionQuestionResult> => {
@@ -377,6 +400,7 @@ export function ComprehensionCheck({
       }
     };
     await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+    if (isStaleRequest()) return;
 
     const totalScore = scoredQuestions.reduce((sum, question) => sum + question.score, 0);
     const maxScore = scoredQuestions.length * 3;
@@ -396,9 +420,12 @@ export function ComprehensionCheck({
       createdAt: Date.now(),
       durationMs: Math.max(0, Date.now() - startTimeRef.current),
     };
+
+    if (isStaleRequest()) return;
     appendComprehensionAttempt(attempt);
     onAttemptSaved?.(attempt);
 
+    if (isStaleRequest()) return;
     setResults({ questions: scoredQuestions, overallScore });
     setStatus('complete');
   }, [

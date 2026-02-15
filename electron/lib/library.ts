@@ -302,7 +302,7 @@ export async function scanDirectory(dirPath: string): Promise<LibraryItem[]> {
 
   async function scanRecursive(currentPath: string): Promise<void> {
     try {
-      const entries = fs.readdirSync(currentPath, { withFileTypes: true })
+      const entries = await fs.promises.readdir(currentPath, { withFileTypes: true })
 
       for (const entry of entries) {
         const fullPath = path.join(currentPath, entry.name)
@@ -314,7 +314,7 @@ export async function scanDirectory(dirPath: string): Promise<LibraryItem[]> {
           const ext = path.extname(entry.name).toLowerCase()
           if (ext === '.pdf' || ext === '.epub' || ext === '.txt') {
             try {
-              const stats = fs.statSync(fullPath)
+              const stats = await fs.promises.stat(fullPath)
 
               // Compute parent directory relative to root
               // e.g., if root is /references and file is /references/book-name/chapter.pdf
@@ -344,7 +344,7 @@ export async function scanDirectory(dirPath: string): Promise<LibraryItem[]> {
     }
   }
 
-  await scanRecursive(dirPath)
+  await scanRecursive(rootPath)
 
   // Sort by parent directory first, then by name within each group
   items.sort((a, b) => {
