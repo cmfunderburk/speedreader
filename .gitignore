@@ -49,6 +49,7 @@ scripts/prepare-corpus/*.jsonl
 !scripts/prepare-corpus/corpus-prose-hard.jsonl
 
 # Scratchpad / session notes
+.archive/
 PLAN-*.md
 SESSION-REPORT-*.md
 CONTINUE-FROM-HERE.txt
