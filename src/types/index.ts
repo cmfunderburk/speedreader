@@ -143,6 +143,16 @@ export type ComprehensionFormat = 'multiple-choice' | 'true-false' | 'short-answ
 export type ComprehensionRunMode = 'quick-check' | 'exam';
 export type ComprehensionExamPreset = 'quiz' | 'midterm' | 'final';
 export type ComprehensionExamSection = 'recall' | 'interpretation' | 'synthesis';
+export type ComprehensionItemMode =
+  | 'retrieval-check'
+  | 'elaboration'
+  | 'self-explanation'
+  | 'argument-map'
+  | 'synthesis'
+  | 'spaced-recheck'
+  | 'interleaved-drill';
+export type ComprehensionHint = string;
+export type ComprehensionConfidence = 1 | 2 | 3 | 4 | 5;
 export const COMPREHENSION_GEMINI_MODELS = ['gemini-3-pro-preview', 'gemini-3-flash-preview'] as const;
 export type ComprehensionGeminiModel = typeof COMPREHENSION_GEMINI_MODELS[number];
 
@@ -152,18 +162,40 @@ export interface ComprehensionSourceRef {
   group?: string;
 }
 
+export interface ComprehensionKeyPoint {
+  id?: string;
+  text: string;
+  weight?: number;
+}
+
+export interface ComprehensionScheduleMetadata {
+  nextDueAt?: number;
+  lastSeenAt?: number;
+  intervalDays?: number;
+  stability?: number;
+  lapseCount?: number;
+}
+
 export interface ComprehensionQuestionResult {
   id: string;
   dimension: ComprehensionDimension;
   format: ComprehensionFormat;
   section?: ComprehensionExamSection;
   sourceArticleId?: string;
+  mode?: ComprehensionItemMode;
+  keyPoints?: ComprehensionKeyPoint[];
+  targetLatencySec?: number;
   prompt: string;
   userAnswer: string;
+  confidence?: ComprehensionConfidence;
+  withheld?: boolean;
+  hintsUsed?: ComprehensionHint[];
+  timeToAnswerMs?: number;
   modelAnswer: string;
   score: number;          // 0-3
   feedback: string;
   correct?: boolean;      // for auto-scored multiple-choice
+  schedule?: ComprehensionScheduleMetadata;
 }
 
 export interface ComprehensionAttempt {
@@ -188,6 +220,9 @@ export interface GeneratedComprehensionQuestion {
   format: ComprehensionFormat;
   section?: ComprehensionExamSection;
   sourceArticleId?: string;
+  mode?: ComprehensionItemMode;
+  keyPoints?: ComprehensionKeyPoint[];
+  targetLatencySec?: number;
   prompt: string;
   options?: string[];
   correctOptionIndex?: number;

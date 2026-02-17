@@ -230,7 +230,7 @@ describe('storage-helpers with real storage functions', () => {
     const settings = loadSettings();
     const drill = loadDrillState();
 
-    expect(localStorage.getItem('speedread_schema_version')).toBe('2');
+    expect(localStorage.getItem('speedread_schema_version')).toBe('3');
     expect(settings.wpmByActivity['paced-reading']).toBe(350);
     expect(settings.lastSession?.activity).toBe('paced-reading');
     expect(drill).toEqual({
@@ -469,6 +469,133 @@ describe('comprehension attempt storage', () => {
     expect(loaded[0].id).toBe('valid');
   });
 
+  it('accepts v3 optional question metadata fields when valid', () => {
+    const attempt = makeAttempt({
+      id: 'v3-valid',
+      questions: [
+        {
+          ...makeQuestionResult(),
+          mode: 'spaced-recheck',
+          keyPoints: [
+            { id: 'kp-1', text: 'Mentions the central claim.', weight: 0.7 },
+            { text: 'Notes the tradeoff.' },
+          ],
+          targetLatencySec: 45,
+          confidence: 4,
+          withheld: false,
+          hintsUsed: ['keyword-cue', 'custom-hint-v2'],
+          timeToAnswerMs: 32000,
+          schedule: {
+            nextDueAt: 1735000000000,
+            lastSeenAt: 1734913600000,
+            intervalDays: 4,
+            stability: 2.25,
+            lapseCount: 1,
+          },
+        },
+      ],
+    });
+
+    saveComprehensionAttempts([attempt]);
+
+    const loaded = loadComprehensionAttempts();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe('v3-valid');
+    expect(loaded[0].questions[0].mode).toBe('spaced-recheck');
+    expect(loaded[0].questions[0].confidence).toBe(4);
+    expect(loaded[0].questions[0].schedule?.intervalDays).toBe(4);
+  });
+
+  it('sanitizes invalid v3 optional question metadata fields', () => {
+    const badMode = {
+      ...makeAttempt({ id: 'bad-mode' }),
+      questions: [{ ...makeQuestionResult(), mode: 'free-form' }],
+    };
+    const badConfidence = {
+      ...makeAttempt({ id: 'bad-confidence' }),
+      questions: [{ ...makeQuestionResult(), confidence: 7 }],
+    };
+    const badHint = {
+      ...makeAttempt({ id: 'bad-hint' }),
+      questions: [{ ...makeQuestionResult(), hintsUsed: [42] }],
+    };
+    const badTime = {
+      ...makeAttempt({ id: 'bad-time' }),
+      questions: [{ ...makeQuestionResult(), timeToAnswerMs: -10 }],
+    };
+    const badSection = {
+      ...makeAttempt({ id: 'bad-section' }),
+      questions: [{ ...makeQuestionResult(), section: 'analysis' }],
+    };
+    const badSourceArticleId = {
+      ...makeAttempt({ id: 'bad-source-article-id' }),
+      questions: [{ ...makeQuestionResult(), sourceArticleId: 100 }],
+    };
+    const badSchedule = {
+      ...makeAttempt({ id: 'bad-schedule' }),
+      questions: [{ ...makeQuestionResult(), schedule: { lapseCount: -1 } }],
+    };
+    const goodV3 = makeAttempt({
+      id: 'good-v3',
+      questions: [{ ...makeQuestionResult(), confidence: 5, hintsUsed: ['keyword-cue'] }],
+    });
+
+    localStorage.setItem(
+      'speedread_comprehension_attempts',
+      JSON.stringify([
+        badMode,
+        badConfidence,
+        badHint,
+        badTime,
+        badSection,
+        badSourceArticleId,
+        badSchedule,
+        goodV3,
+      ])
+    );
+
+    const loaded = loadComprehensionAttempts();
+    expect(loaded).toHaveLength(8);
+    expect(loaded.find((attempt) => attempt.id === 'bad-mode')?.questions[0].mode).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'bad-confidence')?.questions[0].confidence).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'bad-hint')?.questions[0].hintsUsed).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'bad-time')?.questions[0].timeToAnswerMs).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'bad-section')?.questions[0].section).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'bad-source-article-id')?.questions[0].sourceArticleId).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'bad-schedule')?.questions[0].schedule).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'good-v3')?.questions[0].confidence).toBe(5);
+  });
+
+  it('sanitizes invalid attempt-level optional metadata fields', () => {
+    const mixedOptionalAttempt = {
+      ...makeAttempt({
+        id: 'mixed-optional',
+      }),
+      runMode: 'drill',
+      examPreset: 'quizzz',
+      difficultyTarget: 'extreme',
+      openBookSynthesis: 'yes',
+      sourceArticles: [
+        { articleId: 'a1', title: 'Source A', group: 99 },
+        { articleId: '', title: 'Broken Source' },
+      ],
+    };
+
+    localStorage.setItem(
+      'speedread_comprehension_attempts',
+      JSON.stringify([mixedOptionalAttempt])
+    );
+
+    const loaded = loadComprehensionAttempts();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe('mixed-optional');
+    expect(loaded[0].runMode).toBeUndefined();
+    expect(loaded[0].examPreset).toBeUndefined();
+    expect(loaded[0].difficultyTarget).toBeUndefined();
+    expect(loaded[0].openBookSynthesis).toBeUndefined();
+    expect(loaded[0].sourceArticles).toEqual([{ articleId: 'a1', title: 'Source A' }]);
+  });
+
   it('caps saved attempts at 200, preserving input order', () => {
     const attempts: ComprehensionAttempt[] = [];
     for (let i = 0; i < 210; i++) {
@@ -505,17 +632,17 @@ describe('comprehension attempt storage', () => {
     expect(loaded[1].id).toBe('first');
   });
 
-  it('schema migration from V1 leaves comprehension attempts empty and bumps version to 2', () => {
+  it('schema migration from V1 leaves comprehension attempts empty and bumps version to 3', () => {
     // Seed V1 state: schema version 1, no comprehension key
     localStorage.setItem('speedread_schema_version', '1');
     localStorage.setItem('speedread_settings', JSON.stringify({ defaultWpm: 300 }));
 
     const loaded = loadComprehensionAttempts();
     expect(loaded).toEqual([]);
-    expect(localStorage.getItem('speedread_schema_version')).toBe('2');
+    expect(localStorage.getItem('speedread_schema_version')).toBe('3');
   });
 
-  it('existing V1 migrations still work after V2 bump', () => {
+  it('existing V1 migrations still work after V3 bump', () => {
     // Seed pre-V1 state (no schema version)
     localStorage.setItem('speedread_settings', JSON.stringify({
       defaultWpm: 350,
@@ -535,7 +662,7 @@ describe('comprehension attempt storage', () => {
     const settings = loadSettings();
     const drill = loadDrillState();
 
-    expect(localStorage.getItem('speedread_schema_version')).toBe('2');
+    expect(localStorage.getItem('speedread_schema_version')).toBe('3');
     expect(settings.wpmByActivity['paced-reading']).toBe(350);
     expect(settings.lastSession?.activity).toBe('paced-reading');
     expect(drill).toEqual({
@@ -544,6 +671,44 @@ describe('comprehension attempt storage', () => {
       minWpm: 230,
       maxWpm: 420,
     });
+  });
+
+  it('schema migration to V3 drops malformed stored comprehension attempts', () => {
+    localStorage.setItem('speedread_schema_version', '2');
+    localStorage.setItem('speedread_comprehension_attempts', '{broken');
+
+    expect(loadComprehensionAttempts()).toEqual([]);
+    expect(localStorage.getItem('speedread_schema_version')).toBe('3');
+    expect(localStorage.getItem('speedread_comprehension_attempts')).toBeNull();
+  });
+
+  it('schema migration to V3 sanitizes optional fields while preserving valid attempts', () => {
+    const legacyAttempt = {
+      ...makeAttempt({ id: 'legacy-v2' }),
+      runMode: 'drill',
+      questions: [
+        {
+          ...makeQuestionResult(),
+          confidence: 10,
+          hintsUsed: [123, 'ok-hint'],
+        },
+      ],
+    };
+    localStorage.setItem('speedread_schema_version', '2');
+    localStorage.setItem('speedread_comprehension_attempts', JSON.stringify([legacyAttempt]));
+
+    const loaded = loadComprehensionAttempts();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe('legacy-v2');
+    expect(loaded[0].runMode).toBeUndefined();
+    expect(loaded[0].questions[0].confidence).toBeUndefined();
+    expect(loaded[0].questions[0].hintsUsed).toEqual(['ok-hint']);
+
+    expect(localStorage.getItem('speedread_schema_version')).toBe('3');
+    const persisted = JSON.parse(localStorage.getItem('speedread_comprehension_attempts') || '[]');
+    expect(persisted[0].runMode).toBeUndefined();
+    expect(persisted[0].questions[0].confidence).toBeUndefined();
+    expect(persisted[0].questions[0].hintsUsed).toEqual(['ok-hint']);
   });
 
   it('returns empty array for non-array JSON', () => {

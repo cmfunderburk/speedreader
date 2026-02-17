@@ -11,14 +11,22 @@ Last updated: 2026-02-17
   - Build a `Send full text` vs `Send excerpt only` toggle now.
   - Default to `Send full text` while testing in development.
   - Keep implementation flexible so default behavior can be revisited later without schema churn.
+- Data model compatibility:
+  - `hintsUsed` is a free-form `string[]` for forward compatibility.
+- Scheduling metadata:
+  - Keep schedule placeholders nested on question records in PR4.
+  - Move to a dedicated scheduler store in PR7 for active due-queue state.
+- Malformed optional comprehension fields:
+  - Preserve attempts when required fields are valid.
+  - Sanitize invalid optional fields on load/migration and emit dev-only warnings.
 
 ## Milestone Board
 
 | Milestone | Status | Goal | PR slices |
 |---|---|---|---|
 | M0: Plan Lock | Done | Freeze scope + sequencing for first implementation wave | PR0 |
-| M1: Reliability Foundation | Planned | Improve request reliability and parsing stability without changing user flows | PR1, PR2, PR3 |
-| M2: Data + Scoring Foundations | Planned | Add richer schema, key-point scoring, confidence capture, calibration output | PR4, PR5, PR6 |
+| M1: Reliability Foundation | Done | Improve request reliability and parsing stability without changing user flows | PR1, PR2, PR3 |
+| M2: Data + Scoring Foundations | In Progress | Add richer schema, key-point scoring, confidence capture, calibration output | PR4, PR5, PR6 |
 | M3: Spaced Recheck | Planned | Introduce due-item scheduling and recheck loop | PR7 |
 | M4: Mode Expansion | Planned | Add interleaving + first new mode family expansions | PR8 |
 | M5: Evaluation Harness | Planned | Add adversarial/golden scoring tests and experiment instrumentation | PR9 |
@@ -39,7 +47,7 @@ Exit criteria:
 ---
 
 ### PR1 - Reliability Foundation (Transport + Schema Plumbing)
-Status: Planned
+Status: Done
 
 Scope:
 - Move Gemini auth from URL query parameter to request header.
@@ -62,7 +70,7 @@ Verification:
 ---
 
 ### PR2 - Quick-Check Structured Output Migration
-Status: Planned
+Status: Done
 
 Scope:
 - Migrate quick-check generation/scoring to schema-first outputs.
@@ -80,7 +88,7 @@ Verification:
 ---
 
 ### PR3 - Exam Structured Output Migration
-Status: Planned
+Status: Done
 
 Scope:
 - Migrate exam generation pipeline to schema-first outputs.
@@ -98,7 +106,7 @@ Verification:
 ---
 
 ### PR4 - Comprehension Schema v3
-Status: Planned
+Status: Done
 
 Scope:
 - Add optional fields for:
