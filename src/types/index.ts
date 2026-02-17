@@ -168,6 +168,13 @@ export interface ComprehensionKeyPoint {
   weight?: number;
 }
 
+export interface ComprehensionKeyPointResult {
+  keyPoint: string;
+  hit: boolean;
+  evidence?: string;
+  weight?: number;
+}
+
 export interface ComprehensionScheduleMetadata {
   nextDueAt?: number;
   lastSeenAt?: number;
@@ -196,6 +203,7 @@ export interface ComprehensionQuestionResult {
   feedback: string;
   correct?: boolean;      // for auto-scored multiple-choice
   schedule?: ComprehensionScheduleMetadata;
+  keyPointResults?: ComprehensionKeyPointResult[];
 }
 
 export interface ComprehensionAttempt {
@@ -237,4 +245,5 @@ export interface GeneratedComprehensionCheck {
 export interface ComprehensionQuestionScore {
   score: number;          // 0-3
   feedback: string;
+  keyPointResults?: ComprehensionKeyPointResult[];
 }

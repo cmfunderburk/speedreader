@@ -24,6 +24,7 @@ import type {
   ComprehensionItemMode,
   ComprehensionScheduleMetadata,
   ComprehensionKeyPoint,
+  ComprehensionKeyPointResult,
 } from '../types';
 import { COMPREHENSION_GEMINI_MODELS } from '../types';
 
@@ -738,6 +739,48 @@ function parseComprehensionKeyPoint(value: unknown, questionId: string): Compreh
   return parsed;
 }
 
+function parseComprehensionKeyPointResult(
+  value: unknown,
+  questionId: string
+): ComprehensionKeyPointResult | null {
+  if (typeof value !== 'object' || value === null) {
+    warnComprehensionSanitization(`question ${questionId}`, 'keyPointResults[]');
+    return null;
+  }
+
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.keyPoint !== 'string' || obj.keyPoint.trim().length === 0) {
+    warnComprehensionSanitization(`question ${questionId}`, 'keyPointResults[].keyPoint');
+    return null;
+  }
+  if (typeof obj.hit !== 'boolean') {
+    warnComprehensionSanitization(`question ${questionId}`, 'keyPointResults[].hit');
+    return null;
+  }
+
+  const result: ComprehensionKeyPointResult = {
+    keyPoint: obj.keyPoint.trim(),
+    hit: obj.hit,
+  };
+
+  if (obj.evidence !== undefined) {
+    if (typeof obj.evidence === 'string' && obj.evidence.trim().length > 0) {
+      result.evidence = obj.evidence.trim();
+    } else {
+      warnComprehensionSanitization(`question ${questionId}`, 'keyPointResults[].evidence');
+    }
+  }
+  if (obj.weight !== undefined) {
+    if (isFiniteNumber(obj.weight) && obj.weight >= 0) {
+      result.weight = obj.weight;
+    } else {
+      warnComprehensionSanitization(`question ${questionId}`, 'keyPointResults[].weight');
+    }
+  }
+
+  return result;
+}
+
 function parseComprehensionScheduleMetadata(
   value: unknown,
   questionId: string,
@@ -904,6 +947,18 @@ function parseComprehensionQuestionResult(value: unknown): ComprehensionQuestion
   if (obj.schedule !== undefined) {
     const schedule = parseComprehensionScheduleMetadata(obj.schedule, question.id);
     if (schedule) question.schedule = schedule;
+  }
+  if (obj.keyPointResults !== undefined) {
+    if (Array.isArray(obj.keyPointResults)) {
+      const keyPointResults = obj.keyPointResults
+        .map((item) => parseComprehensionKeyPointResult(item, question.id))
+        .filter((item): item is ComprehensionKeyPointResult => item !== null);
+      if (keyPointResults.length > 0 || obj.keyPointResults.length === 0) {
+        question.keyPointResults = keyPointResults;
+      }
+    } else {
+      warnComprehensionSanitization(`question ${question.id}`, 'keyPointResults');
+    }
   }
 
   return question;

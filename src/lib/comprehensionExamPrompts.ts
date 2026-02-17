@@ -3,6 +3,7 @@ import type {
   ComprehensionDimension,
   ComprehensionExamSection,
   ComprehensionFormat,
+  ComprehensionKeyPoint,
   GeneratedComprehensionCheck,
   GeneratedComprehensionQuestion,
 } from '../types';
@@ -249,6 +250,48 @@ function deriveModelAnswerFallback(
   return null;
 }
 
+function deriveFallbackKeyPoints(modelAnswer: string): ComprehensionKeyPoint[] {
+  const matches = modelAnswer.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [];
+  const keyPoints = matches
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0)
+    .slice(0, 3)
+    .map((sentence, index) => ({
+      id: `kp-${index + 1}`,
+      text: sentence,
+      weight: 1,
+    }));
+  return keyPoints.length > 0 ? keyPoints : [{ id: 'kp-1', text: modelAnswer, weight: 1 }];
+}
+
+function parseKeyPoint(value: unknown): ComprehensionKeyPoint | null {
+  if (isNonEmptyString(value)) {
+    return { text: value.trim() };
+  }
+  if (typeof value !== 'object' || value === null) return null;
+
+  const obj = value as Record<string, unknown>;
+  const text = isNonEmptyString(obj.text) ? obj.text.trim() : null;
+  if (!text) return null;
+
+  const keyPoint: ComprehensionKeyPoint = { text };
+  if (isNonEmptyString(obj.id)) keyPoint.id = obj.id.trim();
+  if (typeof obj.weight === 'number' && Number.isFinite(obj.weight) && obj.weight >= 0) {
+    keyPoint.weight = obj.weight;
+  }
+  return keyPoint;
+}
+
+function parseKeyPoints(value: unknown, modelAnswer: string): ComprehensionKeyPoint[] {
+  if (!Array.isArray(value)) {
+    return deriveFallbackKeyPoints(modelAnswer);
+  }
+  const keyPoints = value
+    .map(parseKeyPoint)
+    .filter((keyPoint): keyPoint is ComprehensionKeyPoint => keyPoint !== null);
+  return keyPoints.length > 0 ? keyPoints : deriveFallbackKeyPoints(modelAnswer);
+}
+
 function extractTopLevelItems(parsed: Record<string, unknown>): unknown[] {
   if (Array.isArray(parsed.items)) return parsed.items;
   if (Array.isArray(parsed.questions)) return parsed.questions;
@@ -379,6 +422,7 @@ function parseGeneratedExamQuestion(
   const prompt = pickString(obj, ['prompt', 'question', 'stem', 'text']);
   const modelAnswer = pickString(obj, ['modelAnswer', 'answer', 'explanation', 'rationale'])
     ?? deriveModelAnswerFallback(format, options, correctOptionIndex, correctAnswer);
+  const keyPoints = parseKeyPoints(obj.keyPoints ?? obj.key_points, modelAnswer ?? '');
 
   if (!sourceArticleId || !prompt || !modelAnswer) {
     throw new Error(`Exam item ${index} is missing required fields`);
@@ -393,6 +437,7 @@ function parseGeneratedExamQuestion(
     sourceArticleId,
     prompt,
     modelAnswer,
+    keyPoints,
   };
 
   if (format === 'multiple-choice') {
@@ -523,6 +568,7 @@ export function buildGenerateExamPrompt(args: GenerateExamPromptArgs): string {
     '- Multiple-choice must include exactly 4 unique options and a valid correctOptionIndex.',
     '- True-false must include valid correctAnswer boolean.',
     '- True-false prompts must ask for True/False plus a brief explanation in <= 2 sentences.',
+    '- Every question must include keyPoints as a concise checklist (2-4 items) with optional weights.',
     '- Short-answer and essay must include modelAnswer.',
     '- Include sections in order: recall, interpretation, synthesis.',
     '- Output formatting is enforced by a response schema supplied by the caller.',

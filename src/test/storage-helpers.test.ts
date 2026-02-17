@@ -492,6 +492,10 @@ describe('comprehension attempt storage', () => {
             stability: 2.25,
             lapseCount: 1,
           },
+          keyPointResults: [
+            { keyPoint: 'Mentions the central claim.', hit: true, evidence: 'Cites it directly.' },
+            { keyPoint: 'Notes the tradeoff.', hit: false, weight: 0.5 },
+          ],
         },
       ],
     });
@@ -504,6 +508,10 @@ describe('comprehension attempt storage', () => {
     expect(loaded[0].questions[0].mode).toBe('spaced-recheck');
     expect(loaded[0].questions[0].confidence).toBe(4);
     expect(loaded[0].questions[0].schedule?.intervalDays).toBe(4);
+    expect(loaded[0].questions[0].keyPointResults).toEqual([
+      { keyPoint: 'Mentions the central claim.', hit: true, evidence: 'Cites it directly.' },
+      { keyPoint: 'Notes the tradeoff.', hit: false, weight: 0.5 },
+    ]);
   });
 
   it('sanitizes invalid v3 optional question metadata fields', () => {
@@ -535,6 +543,10 @@ describe('comprehension attempt storage', () => {
       ...makeAttempt({ id: 'bad-schedule' }),
       questions: [{ ...makeQuestionResult(), schedule: { lapseCount: -1 } }],
     };
+    const badKeyPointResults = {
+      ...makeAttempt({ id: 'bad-key-point-results' }),
+      questions: [{ ...makeQuestionResult(), keyPointResults: [{ keyPoint: '', hit: true }] }],
+    };
     const goodV3 = makeAttempt({
       id: 'good-v3',
       questions: [{ ...makeQuestionResult(), confidence: 5, hintsUsed: ['keyword-cue'] }],
@@ -550,12 +562,13 @@ describe('comprehension attempt storage', () => {
         badSection,
         badSourceArticleId,
         badSchedule,
+        badKeyPointResults,
         goodV3,
       ])
     );
 
     const loaded = loadComprehensionAttempts();
-    expect(loaded).toHaveLength(8);
+    expect(loaded).toHaveLength(9);
     expect(loaded.find((attempt) => attempt.id === 'bad-mode')?.questions[0].mode).toBeUndefined();
     expect(loaded.find((attempt) => attempt.id === 'bad-confidence')?.questions[0].confidence).toBeUndefined();
     expect(loaded.find((attempt) => attempt.id === 'bad-hint')?.questions[0].hintsUsed).toBeUndefined();
@@ -563,6 +576,7 @@ describe('comprehension attempt storage', () => {
     expect(loaded.find((attempt) => attempt.id === 'bad-section')?.questions[0].section).toBeUndefined();
     expect(loaded.find((attempt) => attempt.id === 'bad-source-article-id')?.questions[0].sourceArticleId).toBeUndefined();
     expect(loaded.find((attempt) => attempt.id === 'bad-schedule')?.questions[0].schedule).toBeUndefined();
+    expect(loaded.find((attempt) => attempt.id === 'bad-key-point-results')?.questions[0].keyPointResults).toBeUndefined();
     expect(loaded.find((attempt) => attempt.id === 'good-v3')?.questions[0].confidence).toBe(5);
   });
 
@@ -691,6 +705,10 @@ describe('comprehension attempt storage', () => {
           ...makeQuestionResult(),
           confidence: 10,
           hintsUsed: [123, 'ok-hint'],
+          keyPointResults: [
+            { keyPoint: 'Valid point', hit: true },
+            { keyPoint: '', hit: false },
+          ],
         },
       ],
     };
@@ -703,12 +721,14 @@ describe('comprehension attempt storage', () => {
     expect(loaded[0].runMode).toBeUndefined();
     expect(loaded[0].questions[0].confidence).toBeUndefined();
     expect(loaded[0].questions[0].hintsUsed).toEqual(['ok-hint']);
+    expect(loaded[0].questions[0].keyPointResults).toEqual([{ keyPoint: 'Valid point', hit: true }]);
 
     expect(localStorage.getItem('speedread_schema_version')).toBe('3');
     const persisted = JSON.parse(localStorage.getItem('speedread_comprehension_attempts') || '[]');
     expect(persisted[0].runMode).toBeUndefined();
     expect(persisted[0].questions[0].confidence).toBeUndefined();
     expect(persisted[0].questions[0].hintsUsed).toEqual(['ok-hint']);
+    expect(persisted[0].questions[0].keyPointResults).toEqual([{ keyPoint: 'Valid point', hit: true }]);
   });
 
   it('returns empty array for non-array JSON', () => {

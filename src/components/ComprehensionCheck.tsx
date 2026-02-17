@@ -117,6 +117,25 @@ function scoreAutoQuestion(
   return null;
 }
 
+function buildQuestionResultBase(
+  question: GeneratedComprehensionQuestion,
+  userAnswer: string
+): Omit<ComprehensionQuestionResult, 'score' | 'feedback'> {
+  return {
+    id: question.id,
+    dimension: question.dimension,
+    format: question.format,
+    section: question.section,
+    sourceArticleId: question.sourceArticleId,
+    mode: question.mode,
+    keyPoints: question.keyPoints,
+    targetLatencySec: question.targetLatencySec,
+    prompt: question.prompt,
+    userAnswer,
+    modelAnswer: question.modelAnswer,
+  };
+}
+
 function isValidSection(value: string | undefined): value is 'recall' | 'interpretation' | 'synthesis' {
   return value === 'recall' || value === 'interpretation' || value === 'synthesis';
 }
@@ -355,14 +374,7 @@ export function ComprehensionCheck({
 
       if (selected === null && explanation.length === 0) {
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer: '',
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, ''),
           score: 0,
           feedback: 'No answer submitted. Select True or False and add a brief explanation.',
         };
@@ -370,14 +382,7 @@ export function ComprehensionCheck({
 
       if (selected === null) {
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score: 0,
           feedback: 'Select True or False, then explain your reasoning in no more than 2 sentences.',
         };
@@ -385,14 +390,7 @@ export function ComprehensionCheck({
 
       if (selected !== question.correctAnswer) {
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score: 0,
           feedback: `Incorrect true/false choice (${choiceLabel}). ${question.modelAnswer}`,
         };
@@ -400,14 +398,7 @@ export function ComprehensionCheck({
 
       if (!explanation) {
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score: 1,
           feedback: 'True/False choice is correct, but add a brief explanation (<= 2 sentences) to earn full credit.',
         };
@@ -434,30 +425,17 @@ export function ComprehensionCheck({
           : '';
 
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score,
           feedback: `${scored.feedback}${sentenceLimitFeedback}`,
+          keyPointResults: scored.keyPointResults,
         };
       } catch {
         const sentenceLimitFeedback = exceedsSentenceLimit
           ? ` Explanation exceeded 2 sentences (${sentenceCount}).`
           : '';
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score: 1,
           feedback: `True/False choice is correct, but explanation could not be fully scored automatically.${sentenceLimitFeedback} Review the model answer below.`,
         };
@@ -475,14 +453,7 @@ export function ComprehensionCheck({
 
       if (autoScore) {
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score: autoScore.score,
           feedback: question.modelAnswer,
           correct: autoScore.correct,
@@ -491,14 +462,7 @@ export function ComprehensionCheck({
 
       if (!userAnswer) {
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer: '',
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, ''),
           score: 0,
           feedback: 'No answer submitted. Review the model answer below.',
         };
@@ -511,27 +475,14 @@ export function ComprehensionCheck({
         const passageForScoring = scoringArticle?.content ?? article.content;
         const scored = await adapter.scoreAnswer(passageForScoring, question, userAnswer);
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score: scored.score,
           feedback: scored.feedback,
+          keyPointResults: scored.keyPointResults,
         };
       } catch {
         return {
-          id: question.id,
-          dimension: question.dimension,
-          format: question.format,
-          section: question.section,
-          sourceArticleId: question.sourceArticleId,
-          prompt: question.prompt,
-          userAnswer,
-          modelAnswer: question.modelAnswer,
+          ...buildQuestionResultBase(question, userAnswer),
           score: 0,
           feedback: 'Unable to score this answer automatically. Review the model answer below.',
         };
@@ -767,62 +718,83 @@ export function ComprehensionCheck({
         )}
 
         <div className="comprehension-results">
-          {visibleEntries.map(({ question, index, sourceLabel, statusInfo, needsReview, feedbackDuplicate }) => (
-            <article key={question.id} className="comprehension-result-card">
-              <div className="comprehension-result-header">
-                <h3>
-                  Q{index + 1}
-                  {question.section ? ` · ${question.section}` : ''}
-                  {' · '}
-                  {question.format}
-                </h3>
-                <span className={`comprehension-result-status ${statusInfo.tone}`}>
-                  {statusInfo.label}
-                </span>
-              </div>
-              {sourceLabel && (
-                <p className="comprehension-result-meta">
-                  Source: {sourceLabel}
-                </p>
-              )}
-              <p className="comprehension-result-prompt">{question.prompt}</p>
-              <p><strong>Your answer:</strong> {question.userAnswer || '(no answer)'}</p>
-              {question.correct !== undefined && (
-                <p><strong>Auto score:</strong> {question.correct ? 'Correct' : 'Incorrect'}</p>
-              )}
+          {visibleEntries.map(({ question, index, sourceLabel, statusInfo, needsReview, feedbackDuplicate }) => {
+            const keyPointHits = (question.keyPointResults ?? []).filter((item) => item.hit);
+            const keyPointMisses = (question.keyPointResults ?? []).filter((item) => !item.hit);
 
-              {reviewDepth === 'quick' && needsReview && (
-                <p><strong>Why:</strong> {question.feedback}</p>
-              )}
+            return (
+              <article key={question.id} className="comprehension-result-card">
+                <div className="comprehension-result-header">
+                  <h3>
+                    Q{index + 1}
+                    {question.section ? ` · ${question.section}` : ''}
+                    {' · '}
+                    {question.format}
+                  </h3>
+                  <span className={`comprehension-result-status ${statusInfo.tone}`}>
+                    {statusInfo.label}
+                  </span>
+                </div>
+                {sourceLabel && (
+                  <p className="comprehension-result-meta">
+                    Source: {sourceLabel}
+                  </p>
+                )}
+                <p className="comprehension-result-prompt">{question.prompt}</p>
+                <p><strong>Your answer:</strong> {question.userAnswer || '(no answer)'}</p>
+                {question.correct !== undefined && (
+                  <p><strong>Auto score:</strong> {question.correct ? 'Correct' : 'Incorrect'}</p>
+                )}
 
-              {reviewDepth === 'standard' && (
-                <>
-                  {feedbackDuplicate ? (
-                    <p><strong>Explanation:</strong> {question.feedback}</p>
-                  ) : (
-                    <>
-                      <p><strong>Feedback:</strong> {question.feedback}</p>
-                      {needsReview && <p><strong>Model answer:</strong> {question.modelAnswer}</p>}
-                    </>
-                  )}
-                </>
-              )}
+                {reviewDepth === 'quick' && needsReview && (
+                  <p><strong>Why:</strong> {question.feedback}</p>
+                )}
 
-              {reviewDepth === 'deep' && (
-                <>
-                  {feedbackDuplicate ? (
-                    <p><strong>Feedback / model answer:</strong> {question.feedback}</p>
-                  ) : (
-                    <>
-                      <p><strong>Feedback:</strong> {question.feedback}</p>
-                      <p><strong>Model answer:</strong> {question.modelAnswer}</p>
-                    </>
-                  )}
-                  <p><strong>Score:</strong> {question.score}/3</p>
-                </>
-              )}
-            </article>
-          ))}
+                {reviewDepth === 'standard' && (
+                  <>
+                    {feedbackDuplicate ? (
+                      <p><strong>Explanation:</strong> {question.feedback}</p>
+                    ) : (
+                      <>
+                        <p><strong>Feedback:</strong> {question.feedback}</p>
+                        {needsReview && <p><strong>Model answer:</strong> {question.modelAnswer}</p>}
+                      </>
+                    )}
+                    {question.keyPointResults && (
+                      <p>
+                        <strong>Key points:</strong> met {keyPointHits.length}/{question.keyPointResults.length}
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {reviewDepth === 'deep' && (
+                  <>
+                    {feedbackDuplicate ? (
+                      <p><strong>Feedback / model answer:</strong> {question.feedback}</p>
+                    ) : (
+                      <>
+                        <p><strong>Feedback:</strong> {question.feedback}</p>
+                        <p><strong>Model answer:</strong> {question.modelAnswer}</p>
+                      </>
+                    )}
+                    <p><strong>Score:</strong> {question.score}/3</p>
+                    {question.keyPointResults && (
+                      <>
+                        <p><strong>Key points met:</strong> {keyPointHits.length}/{question.keyPointResults.length}</p>
+                        {keyPointHits.length > 0 && (
+                          <p><strong>Met:</strong> {keyPointHits.map((item) => item.keyPoint).join('; ')}</p>
+                        )}
+                        {keyPointMisses.length > 0 && (
+                          <p><strong>Missed:</strong> {keyPointMisses.map((item) => item.keyPoint).join('; ')}</p>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </article>
+            );
+          })}
         </div>
         <div className="comprehension-actions">
           <button className="control-btn" onClick={onClose}>Done</button>

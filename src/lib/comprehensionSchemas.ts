@@ -1,5 +1,15 @@
 export type GeminiJsonSchema = Record<string, unknown>;
 
+const KEY_POINT_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    text: { type: 'string' },
+    weight: { type: 'number' },
+  },
+  required: ['text'],
+} as const;
+
 export const GENERATED_CHECK_RESPONSE_JSON_SCHEMA: GeminiJsonSchema = {
   type: 'object',
   properties: {
@@ -19,6 +29,10 @@ export const GENERATED_CHECK_RESPONSE_JSON_SCHEMA: GeminiJsonSchema = {
           correctOptionIndex: { type: 'integer' },
           correctAnswer: { type: 'boolean' },
           modelAnswer: { type: 'string' },
+          keyPoints: {
+            type: 'array',
+            items: KEY_POINT_SCHEMA,
+          },
         },
         required: ['dimension', 'format', 'prompt', 'modelAnswer'],
       },
@@ -48,6 +62,10 @@ export const GENERATED_EXAM_RESPONSE_JSON_SCHEMA: GeminiJsonSchema = {
           correctOptionIndex: { type: 'integer' },
           correctAnswer: { type: 'boolean' },
           modelAnswer: { type: 'string' },
+          keyPoints: {
+            type: 'array',
+            items: KEY_POINT_SCHEMA,
+          },
         },
         required: [
           'dimension',
@@ -68,6 +86,19 @@ export const QUESTION_SCORE_RESPONSE_JSON_SCHEMA: GeminiJsonSchema = {
   properties: {
     score: { type: 'number' },
     feedback: { type: 'string' },
+    keyPointResults: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          keyPoint: { type: 'string' },
+          hit: { type: 'boolean' },
+          evidence: { type: 'string' },
+          weight: { type: 'number' },
+        },
+        required: ['keyPoint', 'hit'],
+      },
+    },
   },
   required: ['score', 'feedback'],
 };
