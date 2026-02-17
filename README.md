@@ -58,7 +58,7 @@ The design goal is to reduce friction between reading and retention practice by 
 - Configure API key in `Settings -> Comprehension Check API Key` (this key is only required for comprehension checks).
 - Configure model in `Settings -> Comprehension Check API Key` (currently `gemini-3-pro-preview` or `gemini-3-flash-preview`).
 - In Electron builds, API keys are stored in OS-backed secure encrypted storage when available (with local app-storage fallback if the OS keyring is unavailable); in web builds they use browser local storage.
-- Current Gemini REST integration sends the API key in the request URL query string (`?key=...`), which can appear in network tooling logs.
+- Current Gemini REST integration sends the API key via `x-goog-api-key` request header.
 
 ## Workflow Features
 - Passage workspace in paced reading:
@@ -127,6 +127,5 @@ If `electron/**` or Electron-relevant shared/type/config surfaces changed, also 
 ## Project Docs
 - Agent/repo workflow: `AGENTS.md`
 - AI implementation context: `CLAUDE.md`
-- Comprehension check spec: `docs/brainstorming/comprehension-companion-v1-spec.md`
-- Comprehension implementation plan: `docs/brainstorming/comprehension-companion-v1-implementation-plan.md`
-- Archived planning/runbook docs: `docs/.archive/`
+- Comprehension research synthesis: `docs/Comprehension-Check-Research.md`
+- Comprehension milestone board: `docs/Comprehension-Improvement-Milestone-Board.md`

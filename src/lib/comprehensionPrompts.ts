@@ -17,13 +17,11 @@ function clampQuestionCount(questionCount: number): number {
   return Math.max(MIN_QUESTION_COUNT, Math.min(MAX_QUESTION_COUNT, Math.round(questionCount)));
 }
 
-function extractJsonSnippet(rawResponse: string): string {
+function extractFallbackJsonSnippet(rawResponse: string): string {
   const trimmed = rawResponse.trim();
   if (!trimmed) {
     throw new Error('LLM response was empty');
   }
-
-  if (trimmed.startsWith('{')) return trimmed;
 
   const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fencedMatch?.[1]) {
@@ -101,12 +99,22 @@ function parseGeneratedQuestion(value: unknown, index: number): GeneratedCompreh
 }
 
 function parseRawJsonObject(rawResponse: string): Record<string, unknown> {
-  const jsonText = extractJsonSnippet(rawResponse);
+  const trimmed = rawResponse.trim();
+  if (!trimmed) {
+    throw new Error('LLM response was empty');
+  }
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonText);
+    // Schema-driven calls should return direct JSON; parse this path first.
+    parsed = JSON.parse(trimmed);
   } catch {
-    throw new Error('LLM response JSON was invalid');
+    const fallbackText = extractFallbackJsonSnippet(rawResponse);
+    try {
+      parsed = JSON.parse(fallbackText);
+    } catch {
+      throw new Error('LLM response JSON was invalid');
+    }
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -130,22 +138,8 @@ export function buildGenerateCheckPrompt(passage: string, questionCount: number)
     '- True-false questions must include correctAnswer as a boolean.',
     '- True-false prompts must explicitly ask for True/False plus a brief explanation in <= 2 sentences.',
     '- Every question must include an explanatory modelAnswer.',
-    '',
-    'Return JSON only with this exact shape:',
-    '{',
-    '  "questions": [',
-    '    {',
-    '      "id": "q1",',
-    '      "dimension": "factual|inference|structural|evaluative",',
-    '      "format": "multiple-choice|true-false|short-answer|essay",',
-    '      "prompt": "Question text",',
-    '      "options": ["A", "B", "C", "D"],',
-    '      "correctOptionIndex": 0,',
-    '      "correctAnswer": true,',
-    '      "modelAnswer": "Concise explanatory answer"',
-    '    }',
-    '  ]',
-    '}',
+    '- Output formatting is enforced by a response schema supplied by the caller.',
+    '- Do not include markdown fences or explanatory commentary.',
     '',
     'Passage:',
     passage,
@@ -171,8 +165,8 @@ export function buildScoreAnswerPrompt(
   return [
     'You are grading one comprehension response against a passage.',
     'Use only the passage and question context provided here.',
-    'Return JSON only with this exact shape:',
-    '{ "score": 0, "feedback": "Two to three concise educational sentences." }',
+    'Output formatting is enforced by a response schema supplied by the caller.',
+    'Do not include markdown fences or explanatory commentary.',
     '',
     'Scoring rubric (0-3):',
     '- 0: Incorrect or unsupported by passage evidence.',

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GeminiComprehensionAdapter, createComprehensionAdapter } from './comprehensionAdapter';
 import type { GeneratedComprehensionQuestion } from '../types';
+import {
+  GENERATED_CHECK_RESPONSE_JSON_SCHEMA,
+  GENERATED_EXAM_RESPONSE_JSON_SCHEMA,
+  QUESTION_SCORE_RESPONSE_JSON_SCHEMA,
+} from './comprehensionSchemas';
 
 function makeJsonResponse(body: unknown, status: number = 200): Response {
   return {
@@ -61,11 +66,17 @@ describe('comprehensionAdapter', () => {
 
     const firstCall = fetchMock.mock.calls[0];
     expect(firstCall).toBeDefined();
-    expect(String(firstCall?.[0])).toContain('/models/gemini-3-flash-preview:generateContent?key=test-key');
+    expect(String(firstCall?.[0])).toContain('/models/gemini-3-flash-preview:generateContent');
+    expect(String(firstCall?.[0])).not.toContain('?key=');
     const requestInit = firstCall?.[1];
     expect(requestInit).toBeDefined();
+    expect(requestInit?.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'x-goog-api-key': 'test-key',
+    });
     const requestBody = JSON.parse(String(requestInit?.body));
     expect(requestBody.contents[0].parts[0].text).toContain('Sample passage text');
+    expect(requestBody.generationConfig.responseJsonSchema).toEqual(GENERATED_CHECK_RESPONSE_JSON_SCHEMA);
   });
 
   it('uses configured Gemini model when provided', async () => {
@@ -102,7 +113,167 @@ describe('comprehensionAdapter', () => {
     await adapter.generateCheck('Passage', 8);
 
     const firstCall = fetchMock.mock.calls[0];
-    expect(String(firstCall?.[0])).toContain('/models/gemini-3-pro-preview:generateContent?key=test-key');
+    expect(String(firstCall?.[0])).toContain('/models/gemini-3-pro-preview:generateContent');
+    expect(String(firstCall?.[0])).not.toContain('?key=');
+  });
+
+  it('uses exam schema when generating exams', async () => {
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => makeJsonResponse({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  items: [
+                    {
+                      id: 'item-1',
+                      dimension: 'factual',
+                      format: 'multiple-choice',
+                      section: 'recall',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Recall prompt',
+                      options: ['A', 'B', 'C', 'D'],
+                      correctOptionIndex: 1,
+                      modelAnswer: 'Correct option: B',
+                    },
+                    {
+                      id: 'item-2',
+                      dimension: 'inference',
+                      format: 'short-answer',
+                      section: 'interpretation',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Interpretation prompt',
+                      modelAnswer: 'Interpretation answer',
+                    },
+                    {
+                      id: 'item-3',
+                      dimension: 'factual',
+                      format: 'true-false',
+                      section: 'recall',
+                      sourceArticleId: 'source-a',
+                      prompt: 'True/False prompt',
+                      correctAnswer: true,
+                      modelAnswer: 'True.',
+                    },
+                    {
+                      id: 'item-4',
+                      dimension: 'inference',
+                      format: 'short-answer',
+                      section: 'interpretation',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Interpretation prompt 2',
+                      modelAnswer: 'Interpretation answer 2',
+                    },
+                    {
+                      id: 'item-5',
+                      dimension: 'inference',
+                      format: 'short-answer',
+                      section: 'interpretation',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Interpretation prompt 3',
+                      modelAnswer: 'Interpretation answer 3',
+                    },
+                    {
+                      id: 'item-6',
+                      dimension: 'inference',
+                      format: 'short-answer',
+                      section: 'interpretation',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Interpretation prompt 4',
+                      modelAnswer: 'Interpretation answer 4',
+                    },
+                    {
+                      id: 'item-7',
+                      dimension: 'inference',
+                      format: 'short-answer',
+                      section: 'interpretation',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Interpretation prompt 5',
+                      modelAnswer: 'Interpretation answer 5',
+                    },
+                    {
+                      id: 'item-8',
+                      dimension: 'evaluative',
+                      format: 'essay',
+                      section: 'synthesis',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Synthesis prompt 1',
+                      modelAnswer: 'Synthesis answer 1',
+                    },
+                    {
+                      id: 'item-9',
+                      dimension: 'evaluative',
+                      format: 'essay',
+                      section: 'synthesis',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Synthesis prompt 2',
+                      modelAnswer: 'Synthesis answer 2',
+                    },
+                    {
+                      id: 'item-10',
+                      dimension: 'evaluative',
+                      format: 'essay',
+                      section: 'synthesis',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Synthesis prompt 3',
+                      modelAnswer: 'Synthesis answer 3',
+                    },
+                    {
+                      id: 'item-11',
+                      dimension: 'evaluative',
+                      format: 'essay',
+                      section: 'synthesis',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Synthesis prompt 4',
+                      modelAnswer: 'Synthesis answer 4',
+                    },
+                    {
+                      id: 'item-12',
+                      dimension: 'factual',
+                      format: 'multiple-choice',
+                      section: 'recall',
+                      sourceArticleId: 'source-a',
+                      prompt: 'Recall prompt 2',
+                      options: ['A', 'B', 'C', 'D'],
+                      correctOptionIndex: 2,
+                      modelAnswer: 'Correct option: C',
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    }));
+    const adapter = new GeminiComprehensionAdapter({
+      apiKey: 'test-key',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await adapter.generateExam({
+      selectedArticles: [
+        {
+          id: 'source-a',
+          title: 'Source A',
+          content: 'Source content A',
+          source: 'test',
+          addedAt: 1,
+          readPosition: 0,
+          isRead: false,
+        },
+      ],
+      preset: 'quiz',
+      difficultyTarget: 'standard',
+      openBookSynthesis: true,
+    });
+
+    const firstCall = fetchMock.mock.calls[0];
+    const requestInit = firstCall?.[1];
+    expect(requestInit).toBeDefined();
+    const requestBody = JSON.parse(String(requestInit?.body));
+    expect(requestBody.generationConfig.responseJsonSchema).toEqual(GENERATED_EXAM_RESPONSE_JSON_SCHEMA);
   });
 
   it('calls global fetch with global context when fetchImpl is not provided', async () => {
@@ -151,7 +322,7 @@ describe('comprehensionAdapter', () => {
   });
 
   it('scores an answer through Gemini and parses fenced JSON', async () => {
-    const fetchMock = vi.fn(async () => makeJsonResponse({
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => makeJsonResponse({
       candidates: [
         {
           content: {
@@ -175,6 +346,11 @@ describe('comprehensionAdapter', () => {
       score: 2,
       feedback: 'Reasonable answer with one gap.',
     });
+    const firstCall = fetchMock.mock.calls[0];
+    const requestInit = firstCall?.[1];
+    expect(requestInit).toBeDefined();
+    const requestBody = JSON.parse(String(requestInit?.body));
+    expect(requestBody.generationConfig.responseJsonSchema).toEqual(QUESTION_SCORE_RESPONSE_JSON_SCHEMA);
   });
 
   it('fails clearly when API key is missing', async () => {

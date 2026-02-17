@@ -21,6 +21,12 @@ import {
   getComprehensionExamSourceIds,
 } from './comprehensionExamContext';
 import type { GenerateExamPromptArgs, ParseGeneratedExamArgs } from './comprehensionExamPrompts';
+import {
+  GENERATED_CHECK_RESPONSE_JSON_SCHEMA,
+  GENERATED_EXAM_RESPONSE_JSON_SCHEMA,
+  QUESTION_SCORE_RESPONSE_JSON_SCHEMA,
+  type GeminiJsonSchema,
+} from './comprehensionSchemas';
 
 export interface ComprehensionExamRequest {
   selectedArticles: Article[];
@@ -120,7 +126,7 @@ export class GeminiComprehensionAdapter implements ComprehensionAdapter {
 
   async generateCheck(passage: string, questionCount: number): Promise<GeneratedComprehensionCheck> {
     const prompt = buildGenerateCheckPrompt(passage, questionCount);
-    const rawText = await this.generateContent(prompt);
+    const rawText = await this.generateContent(prompt, GENERATED_CHECK_RESPONSE_JSON_SCHEMA);
     return parseGeneratedCheckResponse(rawText);
   }
 
@@ -144,7 +150,7 @@ export class GeminiComprehensionAdapter implements ComprehensionAdapter {
         const prompt = attempt === 0
           ? basePrompt
           : buildExamRetryPrompt(basePrompt, lastError);
-        const rawText = await this.generateContent(prompt);
+        const rawText = await this.generateContent(prompt, GENERATED_EXAM_RESPONSE_JSON_SCHEMA);
         request.onProgress?.(`Validating exam draft (${attemptNumber}/${MAX_EXAM_GENERATION_ATTEMPTS})...`);
         const parseArgs: ParseGeneratedExamArgs = {
           raw: rawText,
@@ -172,24 +178,28 @@ export class GeminiComprehensionAdapter implements ComprehensionAdapter {
     userAnswer: string
   ): Promise<ComprehensionQuestionScore> {
     const prompt = buildScoreAnswerPrompt(passage, question, userAnswer);
-    const rawText = await this.generateContent(prompt);
+    const rawText = await this.generateContent(prompt, QUESTION_SCORE_RESPONSE_JSON_SCHEMA);
     return parseQuestionScoreResponse(rawText);
   }
 
-  private async generateContent(prompt: string): Promise<string> {
+  private async generateContent(prompt: string, responseJsonSchema?: GeminiJsonSchema): Promise<string> {
     if (!this.apiKey) {
       throw new Error('Comprehension check requires an API key');
     }
 
     const response = await this.fetchImpl(
-      `${this.apiBaseUrl}/models/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
+      `${this.apiBaseUrl}/models/${encodeURIComponent(this.model)}:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': this.apiKey,
+        },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
             responseMimeType: 'application/json',
+            ...(responseJsonSchema ? { responseJsonSchema } : {}),
             temperature: 0.2,
           },
         }),

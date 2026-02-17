@@ -22,13 +22,15 @@ describe('comprehensionPrompts', () => {
     const prompt = buildGenerateCheckPrompt(SAMPLE_PASSAGE, 12);
     expect(prompt).toContain('Generate exactly 10 questions');
     expect(prompt).toContain('True-false prompts must explicitly ask for True/False plus a brief explanation in <= 2 sentences.');
-    expect(prompt).toContain('Return JSON only with this exact shape');
+    expect(prompt).toContain('Output formatting is enforced by a response schema supplied by the caller.');
+    expect(prompt).not.toContain('Return JSON only with this exact shape');
     expect(prompt).toContain(SAMPLE_PASSAGE);
   });
 
   it('builds score prompt with rubric, question, and user answer', () => {
     const prompt = buildScoreAnswerPrompt(SAMPLE_PASSAGE, SAMPLE_QUESTION, 'It is a balanced view.');
     expect(prompt).toContain('Scoring rubric (0-3)');
+    expect(prompt).toContain('Output formatting is enforced by a response schema supplied by the caller.');
     expect(prompt).toContain(SAMPLE_QUESTION.prompt);
     expect(prompt).toContain('It is a balanced view.');
   });
@@ -53,7 +55,37 @@ describe('comprehensionPrompts', () => {
     expect(prompt).toContain('If the selected truth value is wrong, score must be 0.');
   });
 
-  it('parses generated check response from fenced JSON', () => {
+  it('parses generated check response from direct JSON payload', () => {
+    const parsed = parseGeneratedCheckResponse(`
+{
+  "questions": [
+    {
+      "dimension": "factual",
+      "format": "multiple-choice",
+      "prompt": "What does the passage describe?",
+      "options": ["A", "B", "C", "D"],
+      "correctOptionIndex": 1,
+      "modelAnswer": "Choice B is the best summary."
+    },
+    {
+      "id": "q2",
+      "dimension": "evaluative",
+      "format": "essay",
+      "prompt": "Is the argument convincing?",
+      "modelAnswer": "It is convincing because..."
+    }
+  ]
+}
+`);
+
+    expect(parsed.questions).toHaveLength(2);
+    expect(parsed.questions[0].id).toBe('q-1');
+    expect(parsed.questions[0].format).toBe('multiple-choice');
+    expect(parsed.questions[1].id).toBe('q2');
+    expect(parsed.questions[1].format).toBe('essay');
+  });
+
+  it('falls back to fenced JSON parsing for legacy payloads', () => {
     const parsed = parseGeneratedCheckResponse(`
 \`\`\`json
 {
@@ -101,15 +133,23 @@ describe('comprehensionPrompts', () => {
     ).toThrow('Generated check contained no valid questions');
   });
 
-  it('parses score response and clamps score into 0-3', () => {
-    const parsed = parseQuestionScoreResponse(`
-\`\`\`json
-{ "score": 5, "feedback": "Strong answer with enough evidence." }
-\`\`\`
-`);
+  it('parses direct score response and clamps score into 0-3', () => {
+    const parsed = parseQuestionScoreResponse('{ "score": 5, "feedback": "Strong answer with enough evidence." }');
     expect(parsed).toEqual({
       score: 3,
       feedback: 'Strong answer with enough evidence.',
+    });
+  });
+
+  it('falls back to fenced score response parsing for legacy payloads', () => {
+    const parsed = parseQuestionScoreResponse(`
+\`\`\`json
+{ "score": 2, "feedback": "Reasonable answer with one omission." }
+\`\`\`
+`);
+    expect(parsed).toEqual({
+      score: 2,
+      feedback: 'Reasonable answer with one omission.',
     });
   });
 
