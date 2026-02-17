@@ -8,7 +8,10 @@ import {
 function buildContainerPayload(
   preset: ComprehensionExamPreset,
   sourceIds: string[],
-  options: { synthesisFormat?: 'essay' | 'short-answer' } = {}
+  options: {
+    synthesisFormat?: 'essay' | 'short-answer';
+    recallOptionCount?: number;
+  } = {}
 ): string {
   const blueprint = getComprehensionExamBlueprint(preset);
   const buckets = {
@@ -22,12 +25,13 @@ function buildContainerPayload(
 
   for (let i = 0; i < blueprint.sectionCounts.recall; i += 1) {
     const sourceId = pickSourceId();
+    const recallOptionCount = options.recallOptionCount ?? 4;
     buckets.recall.push({
       id: `r-${i + 1}`,
       type: 'multiple choice',
       sourceId,
       question: `Recall prompt ${i + 1}`,
-      choices: ['A', 'B', 'C', 'D'],
+      choices: ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, recallOptionCount),
       answerIndex: '1',
       answer: 'Correct option: B',
     });
@@ -172,5 +176,16 @@ describe('comprehensionExamPrompts', () => {
       difficultyTarget: 'challenging',
       selectedSourceArticleIds: sourceIds,
     })).toThrowError('Challenging difficulty requires at least one essay question');
+  });
+
+  it('rejects multiple-choice recall items unless they provide exactly four options', () => {
+    const sourceIds = ['source-a', 'source-b'];
+
+    expect(() => parseGeneratedExamResponse({
+      raw: buildContainerPayload('quiz', sourceIds, { recallOptionCount: 3 }),
+      preset: 'quiz',
+      difficultyTarget: 'standard',
+      selectedSourceArticleIds: sourceIds,
+    })).toThrowError('invalid multiple-choice payload');
   });
 });

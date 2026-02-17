@@ -137,7 +137,7 @@ function parseSection(value: unknown): ComprehensionExamSection | null {
 function parseOptions(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const options = value.filter(isNonEmptyString).map((option) => option.trim());
-  if (options.length < 2 || options.length > 6) return null;
+  if (options.length !== 4) return null;
   const unique = new Set(options.map((option) => option.toLowerCase()));
   return unique.size === options.length ? options : null;
 }

@@ -826,23 +826,22 @@ export function App() {
   }, [setViewState]);
 
   const handleLaunchComprehensionBuilder = useCallback((builderState: ComprehensionBuilderState) => {
-    const selectedArticleIds = new Set(builderState.sourceArticleIds);
-    const selectedArticles = articles.filter((article) => selectedArticleIds.has(article.id));
-    if (selectedArticles.length === 0) {
+    const articleById = new Map(articles.map((article) => [article.id, article]));
+    const resolvedSourceArticles = builderState.sourceArticleIds
+      .map((articleId) => articleById.get(articleId))
+      .filter((article): article is Article => article !== undefined);
+    if (resolvedSourceArticles.length === 0) {
       setViewState({ screen: 'home' });
       return;
     }
 
-    const foundIds = new Set(selectedArticles.map((article) => article.id));
-    const resolvedArticleIds = builderState.sourceArticleIds.filter((articleId) => foundIds.has(articleId));
-
     setViewState({
       screen: 'active-comprehension',
-      article: selectedArticles[0],
+      article: resolvedSourceArticles[0],
       entryPoint: 'launcher',
       comprehension: {
         runMode: 'exam',
-        sourceArticleIds: resolvedArticleIds,
+        sourceArticleIds: resolvedSourceArticles.map((article) => article.id),
         examPreset: builderState.preset,
         difficultyTarget: builderState.difficultyTarget,
         openBookSynthesis: builderState.openBookSynthesis,

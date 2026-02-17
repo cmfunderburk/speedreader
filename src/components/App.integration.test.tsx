@@ -6,8 +6,9 @@ import { getTodayUTC } from '../lib/wikipedia';
 
 const mockUseRSVP = vi.fn();
 const mockUseKeyboard = vi.fn();
-const { mockFetchDailyArticle } = vi.hoisted(() => ({
+const { mockFetchDailyArticle, mockComprehensionCheck } = vi.hoisted(() => ({
   mockFetchDailyArticle: vi.fn(),
+  mockComprehensionCheck: vi.fn(),
 }));
 
 vi.mock('../hooks/useRSVP', () => ({
@@ -88,11 +89,14 @@ vi.mock('./TrainingReader', () => ({
 }));
 
 vi.mock('./ComprehensionCheck', () => ({
-  ComprehensionCheck: (props: { onClose: () => void }) => (
-    <div data-testid="comprehension-check">
-      <button onClick={props.onClose}>close-comprehension</button>
-    </div>
-  ),
+  ComprehensionCheck: (props: { onClose: () => void }) => {
+    mockComprehensionCheck(props);
+    return (
+      <div data-testid="comprehension-check">
+        <button onClick={props.onClose}>close-comprehension</button>
+      </div>
+    );
+  },
 }));
 
 describe('App integration smoke', () => {
@@ -105,6 +109,7 @@ describe('App integration smoke', () => {
   beforeEach(() => {
     localStorage.clear();
     mockFetchDailyArticle.mockReset();
+    mockComprehensionCheck.mockReset();
 
     const article: Article = {
       id: 'a1',
@@ -353,6 +358,53 @@ describe('App integration smoke', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('home-screen')).not.toBeNull();
     });
+  });
+
+  it('uses selected source order when launching exam mode', async () => {
+    const articleZ: Article = {
+      id: 'z',
+      title: 'Zeta Source',
+      content: 'Zeta content.',
+      source: 'Test',
+      addedAt: 1,
+      readPosition: 0,
+      isRead: false,
+    };
+    const articleA: Article = {
+      id: 'a',
+      title: 'Alpha Source',
+      content: 'Alpha content.',
+      source: 'Test',
+      addedAt: 2,
+      readPosition: 0,
+      isRead: false,
+    };
+    // Intentionally persist in non-selected order to guard against array-order regressions.
+    localStorage.setItem('speedread_articles', JSON.stringify([articleZ, articleA]));
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'build-exam' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Alpha Source/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Zeta Source/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start Exam' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('comprehension-check')).not.toBeNull();
+    });
+
+    const lastComprehensionProps = mockComprehensionCheck.mock.calls.at(-1)?.[0] as {
+      article: Article;
+      sourceArticles: Article[];
+      comprehension: { sourceArticleIds: string[] };
+    } | undefined;
+    expect(lastComprehensionProps).toBeDefined();
+    expect(lastComprehensionProps?.article.id).toBe('a');
+    expect(lastComprehensionProps?.sourceArticles.map((article) => article.id)).toEqual(['a', 'z']);
+    expect(lastComprehensionProps?.comprehension.sourceArticleIds).toEqual(['a', 'z']);
   });
 
   it('captures a sentence passage from active reader workspace', async () => {
