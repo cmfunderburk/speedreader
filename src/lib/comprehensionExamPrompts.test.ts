@@ -125,4 +125,3 @@ describe('comprehensionExamPrompts', () => {
     expect(parsed.questions.filter((question) => question.format === 'true-false')).toHaveLength(3);
   });
 });
-
