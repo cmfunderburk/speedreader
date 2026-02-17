@@ -128,6 +128,7 @@ export function buildGenerateCheckPrompt(passage: string, questionCount: number)
     '- Include a mix of formats: multiple-choice, true-false, short-answer, essay.',
     '- Multiple-choice questions must include 4 plausible options and a correctOptionIndex.',
     '- True-false questions must include correctAnswer as a boolean.',
+    '- True-false prompts must explicitly ask for True/False plus a brief explanation in <= 2 sentences.',
     '- Every question must include an explanatory modelAnswer.',
     '',
     'Return JSON only with this exact shape:',
@@ -156,6 +157,17 @@ export function buildScoreAnswerPrompt(
   question: GeneratedComprehensionQuestion,
   userAnswer: string
 ): string {
+  const trueFalseRubric = question.format === 'true-false'
+    ? [
+      '',
+      'True-false grading requirements:',
+      '- Score both parts: (a) True/False selection accuracy and (b) explanation quality.',
+      '- If the selected truth value is wrong, score must be 0.',
+      '- Explanations longer than 2 sentences cannot receive a 3.',
+      '- Explanations should be coherent, passage-grounded, and concise.',
+    ]
+    : [];
+
   return [
     'You are grading one comprehension response against a passage.',
     'Use only the passage and question context provided here.',
@@ -167,6 +179,7 @@ export function buildScoreAnswerPrompt(
     '- 1: Minimal understanding; major omissions or errors.',
     '- 2: Mostly correct with some gaps or imprecision.',
     '- 3: Accurate, well-supported, and complete for the prompt.',
+    ...trueFalseRubric,
     '',
     'Question:',
     JSON.stringify(question, null, 2),

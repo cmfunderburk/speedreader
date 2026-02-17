@@ -16,11 +16,8 @@ function makeArticle(id: string): Article {
 }
 
 describe('appViewState', () => {
-  it('initializes add screen for bookmarklet import query', () => {
-    expect(getInitialViewState('?import=1')).toEqual({ screen: 'add' });
-  });
-
   it('initializes home screen without import query', () => {
+    expect(getInitialViewState('?import=1')).toEqual({ screen: 'home' });
     expect(getInitialViewState('?foo=bar')).toEqual({ screen: 'home' });
     expect(getInitialViewState('')).toEqual({ screen: 'home' });
   });
@@ -35,8 +32,24 @@ describe('appViewState', () => {
       { action: { type: 'open-active-reader' }, expected: { screen: 'active-reader' } },
       { action: { type: 'open-active-exercise' }, expected: { screen: 'active-exercise' } },
       {
-        action: { type: 'open-active-comprehension', article, entryPoint: 'launcher' },
-        expected: { screen: 'active-comprehension', article, entryPoint: 'launcher' },
+        action: {
+          type: 'open-active-comprehension',
+          article,
+          entryPoint: 'launcher',
+          comprehension: {
+            runMode: 'quick-check',
+            sourceArticleIds: [article.id],
+          },
+        },
+        expected: {
+          screen: 'active-comprehension',
+          article,
+          entryPoint: 'launcher',
+          comprehension: {
+            runMode: 'quick-check',
+            sourceArticleIds: ['a1'],
+          },
+        },
       },
       { action: { type: 'open-active-training', article }, expected: { screen: 'active-training', article } },
       { action: { type: 'open-active-training' }, expected: { screen: 'active-training' } },
@@ -58,7 +71,15 @@ describe('appViewState', () => {
       { screen: 'preview', activity: 'paced-reading', article },
       { screen: 'active-reader' },
       { screen: 'active-exercise' },
-      { screen: 'active-comprehension', article, entryPoint: 'post-reading' },
+      {
+        screen: 'active-comprehension',
+        article,
+        entryPoint: 'post-reading',
+        comprehension: {
+          runMode: 'quick-check',
+          sourceArticleIds: [article.id],
+        },
+      },
       { screen: 'active-training', article },
       { screen: 'settings' },
       { screen: 'library-settings' },

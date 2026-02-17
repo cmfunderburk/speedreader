@@ -187,7 +187,21 @@ export function TrainingReader({
 
   // Check corpus availability on mount
   useEffect(() => {
-    window.corpus?.getInfo().then(info => setCorpusInfo(info ?? null));
+    let cancelled = false;
+    window.corpus?.getInfo()
+      .then((info) => {
+        if (cancelled) return;
+        setCorpusInfo(info ?? null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load corpus info', error);
+        setCorpusInfo(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Persist cross-session drill state whenever it changes
@@ -229,10 +243,20 @@ export function TrainingReader({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const inputContainerRef = useRef<HTMLSpanElement>(null);
+  const isMountedRef = useRef(true);
+  const drillFetchRequestRef = useRef(0);
   const lastDrillAdjRef = useRef({ wpmDelta: 0 });
   const lastDetailCountRef = useRef(0);
   const drillPreviewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const drillPreviewHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      drillFetchRequestRef.current += 1;
+    };
+  }, []);
 
   const currentParagraph = paragraphs[currentParagraphIndex] ?? '';
 
@@ -747,15 +771,33 @@ export function TrainingReader({
   }, []);
 
   const fetchDrillArticle = useCallback((onMissing: 'complete' | 'stay') => {
-    window.corpus?.sampleArticle(drillCorpusFamily, drillTier).then(article => {
-      if (article) {
-        setDrillArticle(article);
-        setDrillSentenceIndex(0);
-        setPhase('reading');
-      } else if (onMissing === 'complete') {
-        setPhase('complete');
-      }
-    });
+    const corpus = window.corpus;
+    if (!corpus) return;
+
+    const requestId = drillFetchRequestRef.current + 1;
+    drillFetchRequestRef.current = requestId;
+    const isStaleRequest = () => !isMountedRef.current || drillFetchRequestRef.current !== requestId;
+
+    corpus.sampleArticle(drillCorpusFamily, drillTier)
+      .then((nextArticle) => {
+        if (isStaleRequest()) return;
+        if (nextArticle) {
+          setDrillArticle(nextArticle);
+          setDrillSentenceIndex(0);
+          setPhase('reading');
+          return;
+        }
+        if (onMissing === 'complete') {
+          setPhase('complete');
+        }
+      })
+      .catch((error) => {
+        if (isStaleRequest()) return;
+        console.warn('Failed to fetch drill article', error);
+        if (onMissing === 'complete') {
+          setPhase('complete');
+        }
+      });
   }, [drillCorpusFamily, drillTier]);
 
   const handleContinue = useCallback(() => {
@@ -834,6 +876,7 @@ export function TrainingReader({
 
   const handleReturnToSetup = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    drillFetchRequestRef.current += 1;
     setPaused(false);
     resetRecallRoundState(false);
     setPhase('setup');

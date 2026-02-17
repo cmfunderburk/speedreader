@@ -29,6 +29,7 @@ vi.mock('../lib/wikipedia', async () => {
 vi.mock('./HomeScreen', () => ({
   HomeScreen: (props: {
     onSelectActivity: (activity: Activity) => void;
+    onStartComprehensionBuilder: () => void;
     onStartDaily: () => void;
     onContinue?: (info: { article: Article; activity: Activity; displayMode: string }) => void;
     continueInfo?: { article: Article; activity: Activity; displayMode: string } | null;
@@ -37,6 +38,7 @@ vi.mock('./HomeScreen', () => ({
       <button onClick={() => props.onSelectActivity('paced-reading')}>open-paced</button>
       <button onClick={() => props.onSelectActivity('active-recall')}>open-recall</button>
       <button onClick={() => props.onSelectActivity('comprehension-check')}>open-comprehension</button>
+      <button onClick={props.onStartComprehensionBuilder}>build-exam</button>
       <button onClick={props.onStartDaily}>start-daily</button>
       {props.continueInfo && props.onContinue && (
         <button onClick={() => props.onContinue!(props.continueInfo!)}>continue-session</button>
@@ -337,6 +339,20 @@ describe('App integration smoke', () => {
       expect.objectContaining({ id: 'a1' }),
       { displayMode: 'training' }
     );
+  });
+
+  it('opens and closes the comprehension exam builder', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'build-exam' }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Build Exam', level: 1 })).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('home-screen')).not.toBeNull();
+    });
   });
 
   it('captures a sentence passage from active reader workspace', async () => {

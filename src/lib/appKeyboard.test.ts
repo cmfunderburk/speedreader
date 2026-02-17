@@ -25,8 +25,15 @@ describe('appKeyboard', () => {
 
   it('returns close-active-comprehension on active comprehension', () => {
     const article = makeArticle('c1');
-    expect(planEscapeAction({ screen: 'active-comprehension', article, entryPoint: 'launcher' }))
-      .toBe('close-active-comprehension');
+    expect(planEscapeAction({
+      screen: 'active-comprehension',
+      article,
+      entryPoint: 'launcher',
+      comprehension: {
+        runMode: 'quick-check',
+        sourceArticleIds: [article.id],
+      },
+    })).toBe('close-active-comprehension');
   });
 
   it('returns go-home for all other screens', () => {

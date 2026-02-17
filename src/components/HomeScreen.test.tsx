@@ -8,6 +8,7 @@ const baseProps = {
   onContinue: vi.fn(),
   onStartDrill: vi.fn(),
   onStartDaily: vi.fn(),
+  onStartComprehensionBuilder: vi.fn(),
   dailyStatus: 'idle' as const,
   dailyError: null,
   onStartRandom: vi.fn(),

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Article, TokenMode } from '../types';
 import { tokenize, estimateReadingTime } from '../lib/tokenizer';
 import { formatReadTime } from '../lib/rsvp';
@@ -21,8 +21,14 @@ export function ArticlePreview({
   const [wpm, setWpm] = useState(initialWpm);
   const [mode, setMode] = useState<TokenMode>(initialMode);
 
-  const chunks = tokenize(article.content, mode);
-  const readTime = estimateReadingTime(chunks, wpm);
+  const chunks = useMemo(
+    () => tokenize(article.content, mode),
+    [article.content, mode]
+  );
+  const readTime = useMemo(
+    () => estimateReadingTime(chunks, wpm),
+    [chunks, wpm]
+  );
 
   return (
     <div className="article-preview">

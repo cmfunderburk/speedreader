@@ -33,6 +33,8 @@ export function getHeaderTitle(viewState: ViewState): string {
       return 'Training';
     case 'active-comprehension':
       return 'Comprehension Check';
+    case 'comprehension-builder':
+      return 'Build Exam';
     case 'content-browser':
       return ACTIVITY_LABELS[viewState.activity];
     case 'preview':
@@ -51,7 +53,15 @@ export function planContentBrowserArticleSelection(activity: Activity, article: 
     return { screen: 'active-training', article };
   }
   if (activity === 'comprehension-check') {
-    return { screen: 'active-comprehension', article, entryPoint: 'launcher' };
+    return {
+      screen: 'active-comprehension',
+      article,
+      entryPoint: 'launcher',
+      comprehension: {
+        runMode: 'quick-check',
+        sourceArticleIds: [article.id],
+      },
+    };
   }
   return { screen: 'preview', activity, article };
 }

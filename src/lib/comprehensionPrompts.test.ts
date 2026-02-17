@@ -21,6 +21,7 @@ describe('comprehensionPrompts', () => {
   it('builds generation prompt with clamped question count and passage', () => {
     const prompt = buildGenerateCheckPrompt(SAMPLE_PASSAGE, 12);
     expect(prompt).toContain('Generate exactly 10 questions');
+    expect(prompt).toContain('True-false prompts must explicitly ask for True/False plus a brief explanation in <= 2 sentences.');
     expect(prompt).toContain('Return JSON only with this exact shape');
     expect(prompt).toContain(SAMPLE_PASSAGE);
   });
@@ -30,6 +31,26 @@ describe('comprehensionPrompts', () => {
     expect(prompt).toContain('Scoring rubric (0-3)');
     expect(prompt).toContain(SAMPLE_QUESTION.prompt);
     expect(prompt).toContain('It is a balanced view.');
+  });
+
+  it('adds true-false-specific grading requirements when scoring true-false', () => {
+    const trueFalseQuestion: GeneratedComprehensionQuestion = {
+      id: 'tf-1',
+      dimension: 'factual',
+      format: 'true-false',
+      prompt: 'True or False: Mill rejects all social limits. Explain in <= 2 sentences.',
+      correctAnswer: false,
+      modelAnswer: 'False. He supports liberty while retaining social constraints.',
+    };
+
+    const prompt = buildScoreAnswerPrompt(
+      SAMPLE_PASSAGE,
+      trueFalseQuestion,
+      'True/False selection: False\nExplanation (<= 2 sentences): He keeps social limits.'
+    );
+
+    expect(prompt).toContain('True-false grading requirements:');
+    expect(prompt).toContain('If the selected truth value is wrong, score must be 0.');
   });
 
   it('parses generated check response from fenced JSON', () => {

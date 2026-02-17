@@ -51,6 +51,7 @@ The design goal is to reduce friction between reading and retention practice by 
   - factual questions first (passage hidden),
   - inferential/structural/evaluative questions next (passage available).
 - Mixed formats supported in one check: multiple choice, true/false, short answer, essay.
+- True/false items require both a True/False selection and a brief explanation (`<= 2` sentences), and grading reflects both parts.
 - Results emphasize per-question explanatory feedback and persist attempt history locally.
 - Results support `Quick`/`Standard`/`Deep` review depth plus `All questions` / `Needs review` filtering.
 - Review prior attempts from Home via `Comprehension Check -> Review History`.
@@ -97,6 +98,12 @@ bun run test:run
 bun run verify
 bun run verify:ci
 bun run build
+```
+
+Dev server defaults to `http://127.0.0.1:5417` and uses strict port binding (it will fail fast if occupied, rather than shifting or taking over other ports). Override with `READER_DEV_PORT`, for example:
+
+```bash
+READER_DEV_PORT=5517 bun run dev
 ```
 
 ## Electron Build

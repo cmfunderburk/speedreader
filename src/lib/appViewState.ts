@@ -1,15 +1,36 @@
 import type { Activity, Article } from '../types';
 
+import type {
+  ComprehensionExamPreset,
+  ComprehensionRunMode,
+} from '../types';
+
+export interface ComprehensionBuilderState {
+  sourceArticleIds: string[];
+  preset: ComprehensionExamPreset;
+  difficultyTarget: 'standard' | 'challenging';
+  openBookSynthesis: boolean;
+}
+
+export interface ActiveComprehensionContext {
+  runMode: ComprehensionRunMode;
+  sourceArticleIds: string[];
+  examPreset?: ComprehensionExamPreset;
+  difficultyTarget?: 'standard' | 'challenging';
+  openBookSynthesis?: boolean;
+}
+
 export type ViewState =
   | { screen: 'home' }
   | { screen: 'content-browser'; activity: Activity }
   | { screen: 'preview'; activity: Activity; article: Article }
   | { screen: 'active-reader' }
   | { screen: 'active-exercise' }
-  | { screen: 'active-comprehension'; article: Article; entryPoint: 'post-reading' | 'launcher' }
+  | { screen: 'active-comprehension'; article: Article; entryPoint: 'post-reading' | 'launcher'; comprehension: ActiveComprehensionContext }
   | { screen: 'active-training'; article?: Article }
   | { screen: 'settings' }
   | { screen: 'library-settings' }
+  | { screen: 'comprehension-builder'; }
   | { screen: 'add' };
 
 export type ViewAction =
@@ -18,15 +39,16 @@ export type ViewAction =
   | { type: 'open-preview'; activity: Activity; article: Article }
   | { type: 'open-active-reader' }
   | { type: 'open-active-exercise' }
-  | { type: 'open-active-comprehension'; article: Article; entryPoint: 'post-reading' | 'launcher' }
+  | { type: 'open-active-comprehension'; article: Article; entryPoint: 'post-reading' | 'launcher'; comprehension: ActiveComprehensionContext }
   | { type: 'open-active-training'; article?: Article }
+  | { type: 'open-comprehension-builder' }
   | { type: 'open-settings' }
   | { type: 'open-library-settings' }
   | { type: 'open-add' };
 
 export function getInitialViewState(search: string): ViewState {
-  const params = new URLSearchParams(search);
-  return params.get('import') === '1' ? { screen: 'add' } : { screen: 'home' };
+  void search;
+  return { screen: 'home' };
 }
 
 export function appViewStateReducer(_state: ViewState, action: ViewAction): ViewState {
@@ -42,9 +64,16 @@ export function appViewStateReducer(_state: ViewState, action: ViewAction): View
     case 'open-active-exercise':
       return { screen: 'active-exercise' };
     case 'open-active-comprehension':
-      return { screen: 'active-comprehension', article: action.article, entryPoint: action.entryPoint };
+      return {
+        screen: 'active-comprehension',
+        article: action.article,
+        entryPoint: action.entryPoint,
+        comprehension: action.comprehension,
+      };
     case 'open-active-training':
       return { screen: 'active-training', ...(action.article ? { article: action.article } : {}) };
+    case 'open-comprehension-builder':
+      return { screen: 'comprehension-builder' };
     case 'open-settings':
       return { screen: 'settings' };
     case 'open-library-settings':
@@ -69,9 +98,16 @@ export function viewStateToAction(state: ViewState): ViewAction {
     case 'active-exercise':
       return { type: 'open-active-exercise' };
     case 'active-comprehension':
-      return { type: 'open-active-comprehension', article: state.article, entryPoint: state.entryPoint };
+      return {
+        type: 'open-active-comprehension',
+        article: state.article,
+        entryPoint: state.entryPoint,
+        comprehension: state.comprehension,
+      };
     case 'active-training':
       return { type: 'open-active-training', article: state.article };
+    case 'comprehension-builder':
+      return { type: 'open-comprehension-builder' };
     case 'settings':
       return { type: 'open-settings' };
     case 'library-settings':

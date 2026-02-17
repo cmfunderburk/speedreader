@@ -314,7 +314,8 @@ const HEADING_PATTERN = /^(#{1,6})\s+(.+)$/;
 const FIGURE_MARKER_PATTERN = /^\[FIGURE:([^\]]+)\]$/i;
 const FIGURE_URL_PATTERN = /^\[FIGURE_URL:(.+)\]$/i;
 const FIGURE_CAPTION_PATTERN = /^\[FIGURE\s+(.+)\]$/i;
-const EQUATION_IMAGE_PATTERN = /^\[EQN_IMAGE:(\d+)\]$/i;
+const EQUATION_IMAGE_PATTERN = /^\[EQN_IMAGE:(\d+)\](?:\s+(.+))?$/i;
+const EQUATION_LABEL_PATTERN = /^\[EQN_LABEL:(.+)\]$/i;
 
 /**
  * Detect if a line is a markdown heading.
@@ -389,13 +390,22 @@ export function flowTextIntoLines(
 
     if (equationMarker) {
       const equationIndex = Number(equationMarker[1]);
+      let equationCaption = equationMarker[2]?.trim() || undefined;
+      if (!equationCaption && i + 1 < blocks.length) {
+        const labelMatch = blocks[i + 1].match(EQUATION_LABEL_PATTERN);
+        if (labelMatch) {
+          equationCaption = labelMatch[1].trim();
+          i += 1;
+        }
+      }
       const equationSrc = buildEquationSrc(figureAssetBaseUrl, sourcePath, equationIndex);
 
       lines.push({
-        text: `Equation ${equationIndex}`,
+        text: equationCaption || `Equation ${equationIndex}`,
         type: 'figure',
         figureId: `equation-${equationIndex}`,
         figureSrc: equationSrc,
+        figureCaption: equationCaption,
         isEquation: true,
         equationIndex,
       });

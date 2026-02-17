@@ -314,6 +314,44 @@ describe('figure handling', () => {
     });
   });
 
+  it('parses equation placeholders with trailing labels as captions', () => {
+    const text = '[EQN_IMAGE:7] (1.7)';
+    const lines = flowTextIntoLines(
+      text,
+      80,
+      'file:///tmp/bayesian-stats/',
+      '/tmp/bayesian-stats/04-binomial-distribution.txt'
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      type: 'figure',
+      figureId: 'equation-7',
+      figureCaption: '(1.7)',
+      text: '(1.7)',
+      figureSrc: 'reader-asset://local?fileUrl=file%3A%2F%2F%2Ftmp%2Fbayesian-stats%2Fequation-images%2F04-binomial-distribution%2Feqn_007.jpg',
+    });
+  });
+
+  it('parses equation placeholders with separate equation label blocks', () => {
+    const text = '[EQN_IMAGE:9]\n\n[EQN_LABEL:(2.9)]';
+    const lines = flowTextIntoLines(
+      text,
+      80,
+      'file:///tmp/bayesian-stats/',
+      '/tmp/bayesian-stats/04-binomial-distribution.txt'
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      type: 'figure',
+      figureId: 'equation-9',
+      figureCaption: '(2.9)',
+      text: '(2.9)',
+      figureSrc: 'reader-asset://local?fileUrl=file%3A%2F%2F%2Ftmp%2Fbayesian-stats%2Fequation-images%2F04-binomial-distribution%2Feqn_009.jpg',
+    });
+  });
+
   it('uses equation placeholders as saccade chunks instead of raw marker text', () => {
     const text = '[EQN_IMAGE:12]';
     const { pages, chunks } = tokenizeSaccade(

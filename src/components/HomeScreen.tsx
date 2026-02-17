@@ -11,6 +11,7 @@ interface HomeScreenProps {
   onSelectActivity: (activity: Activity) => void;
   onContinue: (info: ContinueInfo) => void;
   onStartDrill: () => void;
+  onStartComprehensionBuilder: () => void;
   onStartDaily: () => void;
   dailyStatus: 'idle' | 'loading' | 'error';
   dailyError: string | null;
@@ -47,6 +48,7 @@ export function HomeScreen({
   onSelectActivity,
   onContinue,
   onStartDrill,
+  onStartComprehensionBuilder,
   onStartDaily,
   dailyStatus,
   dailyError,
@@ -146,6 +148,12 @@ export function HomeScreen({
               onClick={() => onSelectActivity('comprehension-check')}
             >
               Start Check
+            </button>
+            <button
+              className="activity-card-action"
+              onClick={onStartComprehensionBuilder}
+            >
+              Build Exam
             </button>
             <button
               className="activity-card-action"

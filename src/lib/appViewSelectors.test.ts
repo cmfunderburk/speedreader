@@ -27,7 +27,15 @@ describe('appViewSelectors', () => {
     expect(isActiveView({ screen: 'active-reader' })).toBe(true);
     expect(isActiveView({ screen: 'active-exercise' })).toBe(true);
     expect(isActiveView({ screen: 'active-training' })).toBe(true);
-    expect(isActiveView({ screen: 'active-comprehension', article: makeArticle('c1'), entryPoint: 'launcher' })).toBe(false);
+    expect(isActiveView({
+      screen: 'active-comprehension',
+      article: makeArticle('c1'),
+      entryPoint: 'launcher',
+      comprehension: {
+        runMode: 'quick-check',
+        sourceArticleIds: ['c1'],
+      },
+    })).toBe(false);
     expect(isActiveView({ screen: 'home' })).toBe(false);
 
     expect(getActiveWpmActivity({ screen: 'active-reader' })).toBe('paced-reading');
@@ -41,7 +49,15 @@ describe('appViewSelectors', () => {
     expect(getHeaderTitle({ screen: 'active-reader' })).toBe('Paced Reading');
     expect(getHeaderTitle({ screen: 'active-exercise' })).toBe('Active Recall');
     expect(getHeaderTitle({ screen: 'active-training' })).toBe('Training');
-    expect(getHeaderTitle({ screen: 'active-comprehension', article: makeArticle('c2'), entryPoint: 'post-reading' })).toBe('Comprehension Check');
+    expect(getHeaderTitle({
+      screen: 'active-comprehension',
+      article: makeArticle('c2'),
+      entryPoint: 'post-reading',
+      comprehension: {
+        runMode: 'quick-check',
+        sourceArticleIds: ['c2'],
+      },
+    })).toBe('Comprehension Check');
     expect(getHeaderTitle({ screen: 'content-browser', activity: 'training' })).toBe('Training');
     expect(getHeaderTitle({ screen: 'content-browser', activity: 'comprehension-check' })).toBe('Comprehension Check');
     expect(getHeaderTitle({ screen: 'preview', activity: 'active-recall', article: makeArticle('h1') })).toBe('Active Recall');
@@ -59,6 +75,10 @@ describe('appViewSelectors', () => {
       screen: 'active-comprehension',
       article,
       entryPoint: 'launcher',
+      comprehension: {
+        runMode: 'quick-check',
+        sourceArticleIds: [article.id],
+      },
     });
     expect(planContentBrowserArticleSelection('paced-reading', article)).toEqual({
       screen: 'preview',
@@ -91,7 +111,15 @@ describe('appViewSelectors', () => {
     expect(shouldShowBackButton({ screen: 'settings' })).toBe(true);
 
     expect(getHeaderBackAction({ screen: 'active-exercise' })).toBe('close-active-exercise');
-    expect(getHeaderBackAction({ screen: 'active-comprehension', article: makeArticle('c3'), entryPoint: 'launcher' })).toBe('close-active-comprehension');
+    expect(getHeaderBackAction({
+      screen: 'active-comprehension',
+      article: makeArticle('c3'),
+      entryPoint: 'launcher',
+      comprehension: {
+        runMode: 'quick-check',
+        sourceArticleIds: ['c3'],
+      },
+    })).toBe('close-active-comprehension');
     expect(getHeaderBackAction({ screen: 'active-reader' })).toBe('go-home');
   });
 });

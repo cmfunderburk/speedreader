@@ -16,6 +16,10 @@ import type {
   SessionSnapshot,
   ComprehensionAttempt,
   ComprehensionQuestionResult,
+  ComprehensionSourceRef,
+  ComprehensionRunMode,
+  ComprehensionExamPreset,
+  ComprehensionExamSection,
   ComprehensionGeminiModel,
 } from '../types';
 import { COMPREHENSION_GEMINI_MODELS } from '../types';
@@ -622,6 +626,9 @@ const MAX_COMPREHENSION_ATTEMPTS = 200;
 
 const COMPREHENSION_DIMENSIONS = new Set(['factual', 'inference', 'structural', 'evaluative']);
 const COMPREHENSION_FORMATS = new Set(['multiple-choice', 'true-false', 'short-answer', 'essay']);
+const COMPREHENSION_SECTIONS = new Set(['recall', 'interpretation', 'synthesis']);
+const COMPREHENSION_EXAM_PRESETS: Set<ComprehensionExamPreset> = new Set(['quiz', 'midterm', 'final']);
+const COMPREHENSION_RUN_MODES: Set<ComprehensionRunMode> = new Set(['quick-check', 'exam']);
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -636,6 +643,14 @@ function isValidComprehensionQuestionResult(value: unknown): value is Comprehens
     typeof obj.userAnswer === 'string' &&
     typeof obj.modelAnswer === 'string' &&
     typeof obj.feedback === 'string' &&
+    (
+      obj.section === undefined
+      || (
+        typeof obj.section === 'string'
+        && COMPREHENSION_SECTIONS.has(obj.section as ComprehensionExamSection)
+      )
+    ) &&
+    (obj.sourceArticleId === undefined || typeof obj.sourceArticleId === 'string') &&
     typeof obj.dimension === 'string' &&
     COMPREHENSION_DIMENSIONS.has(obj.dimension) &&
     typeof obj.format === 'string' &&
@@ -659,7 +674,30 @@ function isValidComprehensionAttempt(value: unknown): value is ComprehensionAtte
     typeof obj.id === 'string' &&
     typeof obj.articleId === 'string' &&
     typeof obj.articleTitle === 'string' &&
+    (
+      obj.runMode === undefined
+      || (
+        typeof obj.runMode === 'string'
+        && COMPREHENSION_RUN_MODES.has(obj.runMode as ComprehensionRunMode)
+      )
+    ) &&
+    (
+      obj.examPreset === undefined
+      || (
+        typeof obj.examPreset === 'string'
+        && COMPREHENSION_EXAM_PRESETS.has(obj.examPreset as ComprehensionExamPreset)
+      )
+    ) &&
     (obj.entryPoint === 'post-reading' || obj.entryPoint === 'launcher') &&
+    (!Array.isArray(obj.sourceArticles) || obj.sourceArticles.every((source: unknown): source is ComprehensionSourceRef => {
+      if (typeof source !== 'object' || source === null) return false;
+      const ref = source as Record<string, unknown>;
+      if (typeof ref.articleId !== 'string' || ref.articleId.length === 0) return false;
+      if (typeof ref.title !== 'string' || ref.title.length === 0) return false;
+      return ref.group === undefined || typeof ref.group === 'string';
+    })) &&
+    (obj.difficultyTarget === undefined || obj.difficultyTarget === 'standard' || obj.difficultyTarget === 'challenging') &&
+    (obj.openBookSynthesis === undefined || typeof obj.openBookSynthesis === 'boolean') &&
     Array.isArray(obj.questions) &&
     obj.questions.every(isValidComprehensionQuestionResult) &&
     isFiniteNumber(obj.overallScore) &&

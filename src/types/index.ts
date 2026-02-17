@@ -140,19 +140,30 @@ export interface SessionSnapshot {
 // Comprehension Check types
 export type ComprehensionDimension = 'factual' | 'inference' | 'structural' | 'evaluative';
 export type ComprehensionFormat = 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
+export type ComprehensionRunMode = 'quick-check' | 'exam';
+export type ComprehensionExamPreset = 'quiz' | 'midterm' | 'final';
+export type ComprehensionExamSection = 'recall' | 'interpretation' | 'synthesis';
 export const COMPREHENSION_GEMINI_MODELS = ['gemini-3-pro-preview', 'gemini-3-flash-preview'] as const;
 export type ComprehensionGeminiModel = typeof COMPREHENSION_GEMINI_MODELS[number];
+
+export interface ComprehensionSourceRef {
+  articleId: string;
+  title: string;
+  group?: string;
+}
 
 export interface ComprehensionQuestionResult {
   id: string;
   dimension: ComprehensionDimension;
   format: ComprehensionFormat;
+  section?: ComprehensionExamSection;
+  sourceArticleId?: string;
   prompt: string;
   userAnswer: string;
   modelAnswer: string;
   score: number;          // 0-3
   feedback: string;
-  correct?: boolean;      // for auto-scored MC/TF
+  correct?: boolean;      // for auto-scored multiple-choice
 }
 
 export interface ComprehensionAttempt {
@@ -160,6 +171,11 @@ export interface ComprehensionAttempt {
   articleId: string;
   articleTitle: string;
   entryPoint: 'post-reading' | 'launcher';
+  runMode?: ComprehensionRunMode;
+  examPreset?: ComprehensionExamPreset;
+  sourceArticles?: ComprehensionSourceRef[];
+  difficultyTarget?: 'standard' | 'challenging';
+  openBookSynthesis?: boolean;
   questions: ComprehensionQuestionResult[];
   overallScore: number;   // 0-100
   createdAt: number;
@@ -170,6 +186,8 @@ export interface GeneratedComprehensionQuestion {
   id: string;
   dimension: ComprehensionDimension;
   format: ComprehensionFormat;
+  section?: ComprehensionExamSection;
+  sourceArticleId?: string;
   prompt: string;
   options?: string[];
   correctOptionIndex?: number;

@@ -14,6 +14,7 @@ import { RecallReader } from './RecallReader';
 import { TrainingReader } from './TrainingReader';
 import { ComprehensionCheck } from './ComprehensionCheck';
 import { ComprehensionCheckBoundary } from './ComprehensionCheckBoundary';
+import { ComprehensionExamBuilder } from './ComprehensionExamBuilder';
 import { useRSVP } from '../hooks/useRSVP';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { calculateRemainingTime, formatTime, calculateProgress } from '../lib/rsvp';
@@ -66,7 +67,12 @@ import type {
 import { PREDICTION_LINE_WIDTHS } from '../types';
 import { measureTextMetrics } from '../lib/textMetrics';
 import { formatBookName } from '../lib/libraryFormatting';
-import { appViewStateReducer, getInitialViewState, viewStateToAction } from '../lib/appViewState';
+import {
+  appViewStateReducer,
+  getInitialViewState,
+  viewStateToAction,
+  type ComprehensionBuilderState,
+} from '../lib/appViewState';
 import {
   planCloseActiveExercise,
   planContinueSession,
@@ -179,17 +185,30 @@ export function App() {
   useEffect(() => {
     if (!window.library) return;
     const PREFIX = 'Library: ';
+    let cancelled = false;
+
     (async () => {
       const sources = await window.library!.getSources();
       const filenameToGroup = new Map<string, string>();
-      for (const source of sources) {
-        const items = await window.library!.listBooks(source.path);
-        for (const item of items) {
-          if (item.parentDir) {
-            filenameToGroup.set(item.name, formatBookName(item.parentDir));
-          }
+      const listResults = await Promise.allSettled(
+        sources.map((source) => window.library!.listBooks(source.path))
+      );
+
+      if (cancelled) return;
+
+      listResults.forEach((result, index) => {
+        if (result.status !== 'fulfilled') {
+          const source = sources[index];
+          console.warn(`Failed to backfill Library groups for source: ${source?.name ?? source?.path ?? 'unknown'}`, result.reason);
+          return;
         }
-      }
+
+        for (const item of result.value) {
+          if (!item.parentDir) continue;
+          filenameToGroup.set(item.name, formatBookName(item.parentDir));
+        }
+      });
+
       setArticles(prev => {
         let changed = false;
         const updated = prev.map(article => {
@@ -205,7 +224,14 @@ export function App() {
         }
         return prev;
       });
-    })();
+    })().catch((err) => {
+      if (cancelled) return;
+      console.warn('Library group backfill failed', err);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [feeds, setFeeds] = useState<Feed[]>(() => loadFeeds());
@@ -421,7 +447,7 @@ export function App() {
     const updated = [...articles, newArticle];
     setArticles(updated);
     saveArticles(updated);
-    // If in content-browser stay there; if bookmarklet import go home
+    // If in content-browser stay there; if launched from add screen go home
     if (viewState.screen === 'add') {
       setViewState({ screen: 'home' });
     }
@@ -788,8 +814,41 @@ export function App() {
       screen: 'active-comprehension',
       article: rsvp.article,
       entryPoint: 'post-reading',
+      comprehension: {
+        runMode: 'quick-check',
+        sourceArticleIds: [rsvp.article.id],
+      },
     });
   }, [rsvp, setViewState]);
+
+  const handleStartComprehensionBuilder = useCallback(() => {
+    setViewState({ screen: 'comprehension-builder' });
+  }, [setViewState]);
+
+  const handleLaunchComprehensionBuilder = useCallback((builderState: ComprehensionBuilderState) => {
+    const selectedArticleIds = new Set(builderState.sourceArticleIds);
+    const selectedArticles = articles.filter((article) => selectedArticleIds.has(article.id));
+    if (selectedArticles.length === 0) {
+      setViewState({ screen: 'home' });
+      return;
+    }
+
+    const foundIds = new Set(selectedArticles.map((article) => article.id));
+    const resolvedArticleIds = builderState.sourceArticleIds.filter((articleId) => foundIds.has(articleId));
+
+    setViewState({
+      screen: 'active-comprehension',
+      article: selectedArticles[0],
+      entryPoint: 'launcher',
+      comprehension: {
+        runMode: 'exam',
+        sourceArticleIds: resolvedArticleIds,
+        examPreset: builderState.preset,
+        difficultyTarget: builderState.difficultyTarget,
+        openBookSynthesis: builderState.openBookSynthesis,
+      },
+    });
+  }, [articles, setViewState]);
 
   const handleComprehensionAttemptSaved = useCallback((attempt: ComprehensionAttempt) => {
     setComprehensionAttempts((existing) => [attempt, ...existing].slice(0, 200));
@@ -900,6 +959,16 @@ export function App() {
       lastScore: lastAttempt?.overallScore ?? null,
     };
   }, [comprehensionAttempts]);
+
+  const activeComprehensionSourceArticles = useMemo(() => {
+    if (viewState.screen !== 'active-comprehension') return [];
+    if (viewState.comprehension.runMode !== 'exam') {
+      return [viewState.article];
+    }
+    return viewState.comprehension.sourceArticleIds
+      .map((articleId) => articles.find((article) => article.id === articleId))
+      .filter((article): article is Article => article !== undefined);
+  }, [articles, viewState]);
 
   const handleContinue = useCallback((info: { article: Article; activity: Activity; displayMode: DisplayMode }) => {
     applySessionLaunchPlan(planContinueSession(info));
@@ -1171,6 +1240,7 @@ export function App() {
             onSelectActivity={handleSelectActivity}
             onContinue={handleContinue}
             onStartDrill={handleStartDrill}
+            onStartComprehensionBuilder={handleStartComprehensionBuilder}
             onStartDaily={handleStartDaily}
             dailyStatus={dailyStatus}
             dailyError={dailyError}
@@ -1180,6 +1250,14 @@ export function App() {
             continueInfo={continueInfo}
             comprehensionSummary={comprehensionSummary}
             comprehensionAttempts={comprehensionAttempts}
+          />
+        )}
+
+        {viewState.screen === 'comprehension-builder' && (
+          <ComprehensionExamBuilder
+            articles={articles}
+            onClose={goHome}
+            onLaunch={handleLaunchComprehensionBuilder}
           />
         )}
 
@@ -1316,6 +1394,8 @@ export function App() {
             <ComprehensionCheck
               article={viewState.article}
               entryPoint={viewState.entryPoint}
+              sourceArticles={activeComprehensionSourceArticles}
+              comprehension={viewState.comprehension}
               adapter={comprehensionAdapter}
               onClose={closeActiveComprehension}
               onOpenSettings={() => navigate({ screen: 'settings' })}
@@ -1324,7 +1404,7 @@ export function App() {
           </ComprehensionCheckBoundary>
         )}
 
-        {/* Bookmarklet import */}
+        {/* Add Article */}
         {viewState.screen === 'add' && (
           <AddContent
             onAdd={handleAddArticle}
