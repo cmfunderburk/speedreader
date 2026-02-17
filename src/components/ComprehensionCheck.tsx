@@ -226,7 +226,6 @@ export function ComprehensionCheck({
         const secondSection = second.question.section ?? 'recall';
         const sectionDiff = (sectionRank.get(firstSection) ?? 0) - (sectionRank.get(secondSection) ?? 0);
         if (sectionDiff !== 0) return sectionDiff;
-        if (first.question.section !== second.question.section) return 0;
 
         const sourceFirst = first.question.sourceArticleId ?? '';
         const sourceSecond = second.question.sourceArticleId ?? '';

@@ -71,18 +71,6 @@ export function buildComprehensionExamContext(
   };
 }
 
-export function renderExamContext(context: ComprehensionExamContext): string {
-  return context.packets
-    .map((packet) => {
-      const header = `## Source ${packet.articleId}: ${packet.title}`;
-      const marker = `[sourceId=${packet.articleId}]`;
-      const groupText = packet.group ? `\nGroup: ${packet.group}` : '';
-      const body = packet.excerpt || 'No excerpt available.';
-      return `${marker}\n${header}${groupText}\n${body}`;
-    })
-    .join('\n\n');
-}
-
 export function getComprehensionExamSourceIds(context: ComprehensionExamContext): string[] {
   return context.packets.map((packet) => packet.articleId);
 }

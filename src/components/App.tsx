@@ -833,7 +833,8 @@ export function App() {
       return;
     }
 
-    const resolvedArticleIds = builderState.sourceArticleIds.filter((articleId) => selectedArticleIds.has(articleId));
+    const foundIds = new Set(selectedArticles.map((article) => article.id));
+    const resolvedArticleIds = builderState.sourceArticleIds.filter((articleId) => foundIds.has(articleId));
 
     setViewState({
       screen: 'active-comprehension',

@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import type { ComprehensionExamPreset } from '../types';
 import {
   getComprehensionExamBlueprint,
   parseGeneratedExamResponse,
 } from './comprehensionExamPrompts';
 
-function buildContainerPayload(sourceIds: string[]): string {
-  const blueprint = getComprehensionExamBlueprint('quiz');
+function buildContainerPayload(
+  preset: ComprehensionExamPreset,
+  sourceIds: string[],
+  options: { synthesisFormat?: 'essay' | 'short-answer' } = {}
+): string {
+  const blueprint = getComprehensionExamBlueprint(preset);
   const buckets = {
     recall: [] as Array<Record<string, unknown>>,
     interpretation: [] as Array<Record<string, unknown>>,
@@ -43,9 +48,10 @@ function buildContainerPayload(sourceIds: string[]): string {
 
   for (let i = 0; i < blueprint.sectionCounts.synthesis; i += 1) {
     const sourceId = pickSourceId();
+    const synthesisFormat = options.synthesisFormat ?? 'essay';
     buckets.synthesis.push({
       id: `s-${i + 1}`,
-      type: 'essay',
+      type: synthesisFormat === 'essay' ? 'essay' : 'short answer',
       sourceId,
       question: `Synthesis prompt ${i + 1}`,
       answer: `Synthesis model answer ${i + 1}`,
@@ -100,7 +106,7 @@ describe('comprehensionExamPrompts', () => {
   it('parses section-container exam payloads with alias keys', () => {
     const sourceIds = ['source-a', 'source-b'];
     const parsed = parseGeneratedExamResponse({
-      raw: buildContainerPayload(sourceIds),
+      raw: buildContainerPayload('quiz', sourceIds),
       preset: 'quiz',
       difficultyTarget: 'standard',
       selectedSourceArticleIds: sourceIds,
@@ -123,5 +129,48 @@ describe('comprehensionExamPrompts', () => {
     expect(parsed.questions).toHaveLength(12);
     expect(parsed.questions.every((question) => question.sourceArticleId === 'only-source')).toBe(true);
     expect(parsed.questions.filter((question) => question.format === 'true-false')).toHaveLength(3);
+  });
+
+  it('parses midterm and final presets with expected counts', () => {
+    const sourceIds = ['source-a', 'source-b'];
+    const presets: ComprehensionExamPreset[] = ['midterm', 'final'];
+
+    for (const preset of presets) {
+      const blueprint = getComprehensionExamBlueprint(preset);
+      const parsed = parseGeneratedExamResponse({
+        raw: buildContainerPayload(preset, sourceIds),
+        preset,
+        difficultyTarget: 'standard',
+        selectedSourceArticleIds: sourceIds,
+      });
+
+      expect(parsed.questions).toHaveLength(blueprint.questionCount);
+      expect(parsed.questions.filter((question) => question.section === 'recall')).toHaveLength(blueprint.sectionCounts.recall);
+      expect(parsed.questions.filter((question) => question.section === 'interpretation')).toHaveLength(blueprint.sectionCounts.interpretation);
+      expect(parsed.questions.filter((question) => question.section === 'synthesis')).toHaveLength(blueprint.sectionCounts.synthesis);
+    }
+  });
+
+  it('accepts challenging difficulty when exam includes essay questions', () => {
+    const sourceIds = ['source-a', 'source-b'];
+    const parsed = parseGeneratedExamResponse({
+      raw: buildContainerPayload('quiz', sourceIds),
+      preset: 'quiz',
+      difficultyTarget: 'challenging',
+      selectedSourceArticleIds: sourceIds,
+    });
+
+    expect(parsed.questions.some((question) => question.format === 'essay')).toBe(true);
+  });
+
+  it('rejects challenging difficulty when exam includes no essay questions', () => {
+    const sourceIds = ['source-a', 'source-b'];
+
+    expect(() => parseGeneratedExamResponse({
+      raw: buildContainerPayload('quiz', sourceIds, { synthesisFormat: 'short-answer' }),
+      preset: 'quiz',
+      difficultyTarget: 'challenging',
+      selectedSourceArticleIds: sourceIds,
+    })).toThrowError('Challenging difficulty requires at least one essay question');
   });
 });
