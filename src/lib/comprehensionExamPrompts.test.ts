@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ComprehensionExamPreset } from '../types';
 import {
+  buildGenerateExamPrompt,
   getComprehensionExamBlueprint,
   parseGeneratedExamResponse,
 } from './comprehensionExamPrompts';
@@ -107,6 +108,19 @@ function buildTopLevelQuestionsPayload(questionCount: number): string {
 }
 
 describe('comprehensionExamPrompts', () => {
+  it('builds exam generation prompt with schema-driven output instructions', () => {
+    const prompt = buildGenerateExamPrompt({
+      sourceContext: '[sourceId=source-a]\nExcerpt',
+      preset: 'quiz',
+      difficultyTarget: 'standard',
+    });
+
+    expect(prompt).toContain('Total questions: 12');
+    expect(prompt).toContain('Section mix (exact):');
+    expect(prompt).toContain('Output formatting is enforced by a response schema supplied by the caller.');
+    expect(prompt).not.toContain('Return JSON only with this exact shape:');
+  });
+
   it('parses section-container exam payloads with alias keys', () => {
     const sourceIds = ['source-a', 'source-b'];
     const parsed = parseGeneratedExamResponse({
@@ -133,6 +147,23 @@ describe('comprehensionExamPrompts', () => {
     expect(parsed.questions).toHaveLength(12);
     expect(parsed.questions.every((question) => question.sourceArticleId === 'only-source')).toBe(true);
     expect(parsed.questions.filter((question) => question.format === 'true-false')).toHaveLength(3);
+  });
+
+  it('falls back to fenced JSON parsing for legacy exam payloads', () => {
+    const raw = `
+\`\`\`json
+${buildTopLevelQuestionsPayload(12)}
+\`\`\`
+`;
+    const parsed = parseGeneratedExamResponse({
+      raw,
+      preset: 'quiz',
+      difficultyTarget: 'standard',
+      selectedSourceArticleIds: ['only-source'],
+    });
+
+    expect(parsed.questions).toHaveLength(12);
+    expect(parsed.questions.every((question) => question.sourceArticleId === 'only-source')).toBe(true);
   });
 
   it('parses midterm and final presets with expected counts', () => {

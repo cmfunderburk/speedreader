@@ -74,13 +74,11 @@ export function getComprehensionExamBlueprint(preset: ComprehensionExamPreset): 
   return getBlueprint(preset);
 }
 
-function extractJsonSnippet(rawResponse: string): string {
+function extractFallbackJsonSnippet(rawResponse: string): string {
   const trimmed = rawResponse.trim();
   if (!trimmed) {
     throw new Error('LLM response was empty');
   }
-
-  if (trimmed.startsWith('{')) return trimmed;
 
   const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fencedMatch?.[1]) {
@@ -97,12 +95,22 @@ function extractJsonSnippet(rawResponse: string): string {
 }
 
 function parseRawJsonObject(rawResponse: string): Record<string, unknown> {
-  const jsonText = extractJsonSnippet(rawResponse);
+  const trimmed = rawResponse.trim();
+  if (!trimmed) {
+    throw new Error('LLM response was empty');
+  }
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonText);
+    // Schema-driven calls should return direct JSON; parse this path first.
+    parsed = JSON.parse(trimmed);
   } catch {
-    throw new Error('LLM response JSON was invalid');
+    const fallbackText = extractFallbackJsonSnippet(rawResponse);
+    try {
+      parsed = JSON.parse(fallbackText);
+    } catch {
+      throw new Error('LLM response JSON was invalid');
+    }
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -517,24 +525,8 @@ export function buildGenerateExamPrompt(args: GenerateExamPromptArgs): string {
     '- True-false prompts must ask for True/False plus a brief explanation in <= 2 sentences.',
     '- Short-answer and essay must include modelAnswer.',
     '- Include sections in order: recall, interpretation, synthesis.',
-    '',
-    `Return JSON only with this exact shape:`,
-    '{',
-    '  "items": [',
-    '    {',
-    '      "id": "item-1",',
-    '      "dimension": "factual|inference|structural|evaluative",',
-    '      "format": "multiple-choice|true-false|short-answer|essay",',
-    '      "section": "recall|interpretation|synthesis",',
-    `      "sourceArticleId": "one of the provided source ids",`,
-    '      "prompt": "Question text",',
-    '      "options": ["A", "B", "C", "D"],',
-    '      "correctOptionIndex": 0,',
-    '      "correctAnswer": true,',
-    '      "modelAnswer": "Concise explanatory answer"',
-    '    }',
-    '  ]',
-    '}',
+    '- Output formatting is enforced by a response schema supplied by the caller.',
+    '- Do not include markdown fences or explanatory commentary.',
     '',
     'Sources:',
     args.sourceContext,
