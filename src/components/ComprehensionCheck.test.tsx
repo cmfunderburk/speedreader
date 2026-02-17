@@ -65,6 +65,10 @@ describe('ComprehensionCheck', () => {
           format: 'short-answer',
           prompt: 'What does this imply about the check?',
           modelAnswer: 'It implies the check is passage-grounded.',
+          keyPoints: [
+            { text: 'Mentions the check is passage-grounded.' },
+            { text: 'Avoids outside assumptions.' },
+          ],
         },
         {
           id: 'q3',
@@ -82,6 +86,10 @@ describe('ComprehensionCheck', () => {
       scoreAnswer: vi.fn(async () => ({
         score: 2,
         feedback: 'Reasonable answer with one omission.',
+        keyPointResults: [
+          { keyPoint: 'Mentions the check is passage-grounded.', hit: true },
+          { keyPoint: 'Avoids outside assumptions.', hit: false },
+        ],
       })),
     };
 
@@ -133,6 +141,10 @@ describe('ComprehensionCheck', () => {
       entryPoint: 'launcher',
     });
     expect(stored[0].questions).toHaveLength(3);
+    expect(stored[0].questions[1].keyPointResults).toEqual([
+      { keyPoint: 'Mentions the check is passage-grounded.', hit: true },
+      { keyPoint: 'Avoids outside assumptions.', hit: false },
+    ]);
     expect(adapter.scoreAnswer).toHaveBeenCalledTimes(2);
   });
 
@@ -186,6 +198,10 @@ describe('ComprehensionCheck', () => {
       scoreAnswer: vi.fn(async () => ({
         score: 3,
         feedback: 'Accurate choice and concise, coherent explanation.',
+        keyPointResults: [
+          { keyPoint: 'Identifies the statement as true.', hit: true },
+          { keyPoint: 'Provides direct passage evidence.', hit: true },
+        ],
       })),
     };
 
@@ -228,6 +244,10 @@ describe('ComprehensionCheck', () => {
       score: 3,
       userAnswer: 'True. The passage states this directly.',
     });
+    expect(stored[0].questions[0].keyPointResults).toEqual([
+      { keyPoint: 'Identifies the statement as true.', hit: true },
+      { keyPoint: 'Provides direct passage evidence.', hit: true },
+    ]);
   });
 
   it('caps true-false explanation score when explanation exceeds 2 sentences', async () => {

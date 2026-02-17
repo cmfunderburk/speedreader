@@ -15,6 +15,10 @@ const SAMPLE_QUESTION: GeneratedComprehensionQuestion = {
   format: 'short-answer',
   prompt: 'What does this imply about Mill and social authority?',
   modelAnswer: 'He supports liberty but does not reject all social constraint.',
+  keyPoints: [
+    { text: 'Mill supports liberty.', weight: 1 },
+    { text: 'He still recognizes social constraint.', weight: 1 },
+  ],
 };
 
 describe('comprehensionPrompts', () => {
@@ -22,6 +26,7 @@ describe('comprehensionPrompts', () => {
     const prompt = buildGenerateCheckPrompt(SAMPLE_PASSAGE, 12);
     expect(prompt).toContain('Generate exactly 10 questions');
     expect(prompt).toContain('True-false prompts must explicitly ask for True/False plus a brief explanation in <= 2 sentences.');
+    expect(prompt).toContain('Every question must include keyPoints as a concise checklist (2-4 items) with optional weights.');
     expect(prompt).toContain('Output formatting is enforced by a response schema supplied by the caller.');
     expect(prompt).not.toContain('Return JSON only with this exact shape');
     expect(prompt).toContain(SAMPLE_PASSAGE);
@@ -30,6 +35,8 @@ describe('comprehensionPrompts', () => {
   it('builds score prompt with rubric, question, and user answer', () => {
     const prompt = buildScoreAnswerPrompt(SAMPLE_PASSAGE, SAMPLE_QUESTION, 'It is a balanced view.');
     expect(prompt).toContain('Scoring rubric (0-3)');
+    expect(prompt).toContain('Key-point scoring requirements:');
+    expect(prompt).toContain('Key points checklist:');
     expect(prompt).toContain('Output formatting is enforced by a response schema supplied by the caller.');
     expect(prompt).toContain(SAMPLE_QUESTION.prompt);
     expect(prompt).toContain('It is a balanced view.');
@@ -65,14 +72,16 @@ describe('comprehensionPrompts', () => {
       "prompt": "What does the passage describe?",
       "options": ["A", "B", "C", "D"],
       "correctOptionIndex": 1,
-      "modelAnswer": "Choice B is the best summary."
+      "modelAnswer": "Choice B is the best summary.",
+      "keyPoints": [{ "text": "Selects option B." }]
     },
     {
       "id": "q2",
       "dimension": "evaluative",
       "format": "essay",
       "prompt": "Is the argument convincing?",
-      "modelAnswer": "It is convincing because..."
+      "modelAnswer": "It is convincing because...",
+      "keyPoints": [{ "text": "States a clear stance." }, { "text": "Provides passage evidence." }]
     }
   ]
 }
@@ -81,8 +90,10 @@ describe('comprehensionPrompts', () => {
     expect(parsed.questions).toHaveLength(2);
     expect(parsed.questions[0].id).toBe('q-1');
     expect(parsed.questions[0].format).toBe('multiple-choice');
+    expect(parsed.questions[0].keyPoints).toEqual([{ text: 'Selects option B.' }]);
     expect(parsed.questions[1].id).toBe('q2');
     expect(parsed.questions[1].format).toBe('essay');
+    expect(parsed.questions[1].keyPoints).toHaveLength(2);
   });
 
   it('falls back to fenced JSON parsing for legacy payloads', () => {
@@ -113,8 +124,10 @@ describe('comprehensionPrompts', () => {
     expect(parsed.questions).toHaveLength(2);
     expect(parsed.questions[0].id).toBe('q-1');
     expect(parsed.questions[0].format).toBe('multiple-choice');
+    expect(parsed.questions[0].keyPoints?.length).toBeGreaterThan(0);
     expect(parsed.questions[1].id).toBe('q2');
     expect(parsed.questions[1].format).toBe('essay');
+    expect(parsed.questions[1].keyPoints?.length).toBeGreaterThan(0);
   });
 
   it('rejects generation payloads that contain no valid questions', () => {
@@ -134,10 +147,23 @@ describe('comprehensionPrompts', () => {
   });
 
   it('parses direct score response and clamps score into 0-3', () => {
-    const parsed = parseQuestionScoreResponse('{ "score": 5, "feedback": "Strong answer with enough evidence." }');
+    const parsed = parseQuestionScoreResponse(`
+{
+  "score": 5,
+  "feedback": "Strong answer with enough evidence.",
+  "keyPointResults": [
+    { "keyPoint": "Mentions liberty", "hit": true, "evidence": "Says liberty is central." },
+    { "keyPoint": "Mentions limits", "hit": false }
+  ]
+}
+`);
     expect(parsed).toEqual({
       score: 3,
       feedback: 'Strong answer with enough evidence.',
+      keyPointResults: [
+        { keyPoint: 'Mentions liberty', hit: true, evidence: 'Says liberty is central.' },
+        { keyPoint: 'Mentions limits', hit: false },
+      ],
     });
   });
 
@@ -155,5 +181,21 @@ describe('comprehensionPrompts', () => {
 
   it('throws when score response misses feedback', () => {
     expect(() => parseQuestionScoreResponse('{ "score": 2 }')).toThrow('Score response missing feedback');
+  });
+
+  it('filters malformed key point results while keeping valid score payloads', () => {
+    const parsed = parseQuestionScoreResponse(`
+{
+  "score": 2,
+  "feedback": "Reasonable answer.",
+  "keyPointResults": [
+    { "keyPoint": "Valid point", "hit": true },
+    { "keyPoint": "", "hit": false },
+    { "keyPoint": "Missing hit" }
+  ]
+}
+`);
+
+    expect(parsed.keyPointResults).toEqual([{ keyPoint: 'Valid point', hit: true }]);
   });
 });

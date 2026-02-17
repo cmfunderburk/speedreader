@@ -1,6 +1,8 @@
 import type {
   ComprehensionDimension,
   ComprehensionFormat,
+  ComprehensionKeyPoint,
+  ComprehensionKeyPointResult,
   ComprehensionQuestionScore,
   GeneratedComprehensionCheck,
   GeneratedComprehensionQuestion,
@@ -59,6 +61,63 @@ function parseOptions(value: unknown): string[] | null {
   return options.length >= 2 ? options : null;
 }
 
+function deriveFallbackKeyPoints(modelAnswer: string): ComprehensionKeyPoint[] {
+  const matches = modelAnswer.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [];
+  const keyPoints = matches
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0)
+    .slice(0, 3)
+    .map((sentence, index) => ({
+      id: `kp-${index + 1}`,
+      text: sentence,
+      weight: 1,
+    }));
+
+  if (keyPoints.length > 0) {
+    return keyPoints;
+  }
+
+  return [{ id: 'kp-1', text: modelAnswer, weight: 1 }];
+}
+
+function parseKeyPoint(value: unknown): ComprehensionKeyPoint | null {
+  if (isNonEmptyString(value)) {
+    return { text: value.trim() };
+  }
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const text = isNonEmptyString(obj.text) ? obj.text.trim() : null;
+  if (!text) return null;
+
+  const keyPoint: ComprehensionKeyPoint = { text };
+  if (isNonEmptyString(obj.id)) {
+    keyPoint.id = obj.id.trim();
+  }
+  if (typeof obj.weight === 'number' && Number.isFinite(obj.weight) && obj.weight >= 0) {
+    keyPoint.weight = obj.weight;
+  }
+
+  return keyPoint;
+}
+
+function parseKeyPoints(value: unknown, modelAnswer: string): ComprehensionKeyPoint[] {
+  if (!Array.isArray(value)) {
+    return deriveFallbackKeyPoints(modelAnswer);
+  }
+
+  const keyPoints = value
+    .map(parseKeyPoint)
+    .filter((keyPoint): keyPoint is ComprehensionKeyPoint => keyPoint !== null);
+  if (keyPoints.length > 0) {
+    return keyPoints;
+  }
+
+  return deriveFallbackKeyPoints(modelAnswer);
+}
+
 function parseGeneratedQuestion(value: unknown, index: number): GeneratedComprehensionQuestion | null {
   if (typeof value !== 'object' || value === null) return null;
   const obj = value as Record<string, unknown>;
@@ -76,6 +135,7 @@ function parseGeneratedQuestion(value: unknown, index: number): GeneratedCompreh
     format,
     prompt,
     modelAnswer,
+    keyPoints: parseKeyPoints(obj.keyPoints ?? obj.key_points, modelAnswer),
   };
 
   if (format === 'multiple-choice') {
@@ -137,6 +197,7 @@ export function buildGenerateCheckPrompt(passage: string, questionCount: number)
     '- Multiple-choice questions must include 4 plausible options and a correctOptionIndex.',
     '- True-false questions must include correctAnswer as a boolean.',
     '- True-false prompts must explicitly ask for True/False plus a brief explanation in <= 2 sentences.',
+    '- Every question must include keyPoints as a concise checklist (2-4 items) with optional weights.',
     '- Every question must include an explanatory modelAnswer.',
     '- Output formatting is enforced by a response schema supplied by the caller.',
     '- Do not include markdown fences or explanatory commentary.',
@@ -151,6 +212,10 @@ export function buildScoreAnswerPrompt(
   question: GeneratedComprehensionQuestion,
   userAnswer: string
 ): string {
+  const keyPoints = (question.keyPoints && question.keyPoints.length > 0)
+    ? question.keyPoints
+    : deriveFallbackKeyPoints(question.modelAnswer);
+
   const trueFalseRubric = question.format === 'true-false'
     ? [
       '',
@@ -165,6 +230,7 @@ export function buildScoreAnswerPrompt(
   return [
     'You are grading one comprehension response against a passage.',
     'Use only the passage and question context provided here.',
+    'Score key points first, then assign the 0-3 score.',
     'Output formatting is enforced by a response schema supplied by the caller.',
     'Do not include markdown fences or explanatory commentary.',
     '',
@@ -173,16 +239,44 @@ export function buildScoreAnswerPrompt(
     '- 1: Minimal understanding; major omissions or errors.',
     '- 2: Mostly correct with some gaps or imprecision.',
     '- 3: Accurate, well-supported, and complete for the prompt.',
+    '',
+    'Key-point scoring requirements:',
+    '- Evaluate every key point and return keyPointResults[] with keyPoint + hit (+ optional evidence/weight).',
+    '- Use key points as the primary grading signal (not writing style).',
+    '- Weighted coverage guidance: <25% => 0, 25-49% => 1, 50-79% => 2, >=80% => 3 (adjust if major contradiction).',
     ...trueFalseRubric,
     '',
     'Question:',
     JSON.stringify(question, null, 2),
+    '',
+    'Key points checklist:',
+    JSON.stringify(keyPoints, null, 2),
     '',
     `User answer:\n${userAnswer}`,
     '',
     'Passage:',
     passage,
   ].join('\n');
+}
+
+function parseKeyPointResult(value: unknown): ComprehensionKeyPointResult | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const obj = value as Record<string, unknown>;
+  const keyPoint = isNonEmptyString(obj.keyPoint) ? obj.keyPoint.trim() : null;
+  if (!keyPoint || typeof obj.hit !== 'boolean') return null;
+
+  const result: ComprehensionKeyPointResult = {
+    keyPoint,
+    hit: obj.hit,
+  };
+  if (isNonEmptyString(obj.evidence)) {
+    result.evidence = obj.evidence.trim();
+  }
+  if (typeof obj.weight === 'number' && Number.isFinite(obj.weight) && obj.weight >= 0) {
+    result.weight = obj.weight;
+  }
+
+  return result;
 }
 
 export function parseGeneratedCheckResponse(rawResponse: string): GeneratedComprehensionCheck {
@@ -213,8 +307,20 @@ export function parseQuestionScoreResponse(rawResponse: string): ComprehensionQu
     throw new Error('Score response missing feedback');
   }
 
-  return {
+  const response: ComprehensionQuestionScore = {
     score: Math.max(0, Math.min(3, scoreRaw)),
     feedback,
+  };
+  if (Array.isArray(parsed.keyPointResults)) {
+    const keyPointResults = parsed.keyPointResults
+      .map(parseKeyPointResult)
+      .filter((item): item is ComprehensionKeyPointResult => item !== null);
+    if (keyPointResults.length > 0 || parsed.keyPointResults.length === 0) {
+      response.keyPointResults = keyPointResults;
+    }
+  }
+
+  return {
+    ...response,
   };
 }

@@ -117,6 +117,7 @@ describe('comprehensionExamPrompts', () => {
 
     expect(prompt).toContain('Total questions: 12');
     expect(prompt).toContain('Section mix (exact):');
+    expect(prompt).toContain('Every question must include keyPoints as a concise checklist (2-4 items) with optional weights.');
     expect(prompt).toContain('Output formatting is enforced by a response schema supplied by the caller.');
     expect(prompt).not.toContain('Return JSON only with this exact shape:');
   });
@@ -132,6 +133,7 @@ describe('comprehensionExamPrompts', () => {
 
     expect(parsed.questions).toHaveLength(12);
     expect(parsed.questions.every((question) => question.modelAnswer.length > 0)).toBe(true);
+    expect(parsed.questions.every((question) => (question.keyPoints?.length ?? 0) > 0)).toBe(true);
     expect(parsed.questions.some((question) => question.sourceArticleId === 'source-a')).toBe(true);
     expect(parsed.questions.some((question) => question.sourceArticleId === 'source-b')).toBe(true);
   });
@@ -146,6 +148,7 @@ describe('comprehensionExamPrompts', () => {
 
     expect(parsed.questions).toHaveLength(12);
     expect(parsed.questions.every((question) => question.sourceArticleId === 'only-source')).toBe(true);
+    expect(parsed.questions.every((question) => (question.keyPoints?.length ?? 0) > 0)).toBe(true);
     expect(parsed.questions.filter((question) => question.format === 'true-false')).toHaveLength(3);
   });
 

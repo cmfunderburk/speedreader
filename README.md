@@ -51,8 +51,10 @@ The design goal is to reduce friction between reading and retention practice by 
   - factual questions first (passage hidden),
   - inferential/structural/evaluative questions next (passage available).
 - Mixed formats supported in one check: multiple choice, true/false, short answer, essay.
+- Generated questions now include key-point checklists, and free-response scoring prioritizes key-point coverage.
 - True/false items require both a True/False selection and a brief explanation (`<= 2` sentences), and grading reflects both parts.
 - Results emphasize per-question explanatory feedback and persist attempt history locally.
+- `Standard`/`Deep` results include key-point hit/miss breakdown when available.
 - Results support `Quick`/`Standard`/`Deep` review depth plus `All questions` / `Needs review` filtering.
 - Review prior attempts from Home via `Comprehension Check -> Review History`.
 - Configure API key in `Settings -> Comprehension Check API Key` (this key is only required for comprehension checks).

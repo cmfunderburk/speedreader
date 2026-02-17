@@ -128,7 +128,7 @@ Verification:
 ---
 
 ### PR5 - KeyPoints-First Scoring
-Status: Planned
+Status: Done
 
 Scope:
 - Add key-point extraction to generated items.
