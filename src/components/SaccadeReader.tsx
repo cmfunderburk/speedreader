@@ -400,6 +400,7 @@ export const SaccadeLineComponent = memo(function SaccadeLineComponent({
     useSweepBar && 'saccade-line-sweep',
     useFocusTargets && 'saccade-line-focus',
   ].filter(Boolean).join(' ');
+  const sweepLeft = isHeading ? `calc(50% - ${textLength / 2}ch)` : '0';
 
   useEffect(() => {
     if (!useGenerationSweepReveal) {
@@ -524,6 +525,7 @@ export const SaccadeLineComponent = memo(function SaccadeLineComponent({
         <span
           className="saccade-sweep"
           style={{
+            left: sweepLeft,
             animation: `sweep-${lineIndex} ${lineDuration}ms linear both`,
             animationPlayState: isPlaying ? 'running' : 'paused',
           }}
