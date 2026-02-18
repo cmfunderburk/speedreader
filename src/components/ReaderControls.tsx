@@ -42,6 +42,8 @@ interface ReaderControlsProps {
   onSaccadeLengthChange: (length: number) => void;
   generationDifficulty: GenerationDifficulty;
   onGenerationDifficultyChange: (difficulty: GenerationDifficulty) => void;
+  generationSweepReveal: boolean;
+  onGenerationSweepRevealChange: (enabled: boolean) => void;
 }
 
 export function ReaderControls({
@@ -86,6 +88,8 @@ export function ReaderControls({
   onSaccadeLengthChange,
   generationDifficulty,
   onGenerationDifficultyChange,
+  generationSweepReveal,
+  onGenerationSweepRevealChange,
 }: ReaderControlsProps) {
   const isSelfPaced = displayMode === 'prediction' || displayMode === 'recall' || displayMode === 'training';
   const showChunks = !isSelfPaced && displayMode !== 'saccade' && displayMode !== 'generation';
@@ -338,6 +342,14 @@ export function ReaderControls({
                 onChange={e => onShowPacerChange(e.target.checked)}
               />
               <span className="control-label">Pacer</span>
+            </label>
+            <label className="control-group control-checkbox">
+              <input
+                type="checkbox"
+                checked={generationSweepReveal}
+                onChange={e => onGenerationSweepRevealChange(e.target.checked)}
+              />
+              <span className="control-label">Sweep reveal</span>
             </label>
             <label className="control-group">
               <span className="control-label">Difficulty:</span>

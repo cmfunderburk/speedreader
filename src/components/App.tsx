@@ -682,6 +682,14 @@ export function App() {
     });
   }, []);
 
+  const handleGenerationSweepRevealChange = useCallback((enabled: boolean) => {
+    setDisplaySettings(prev => {
+      const next = { ...prev, generationSweepReveal: enabled };
+      saveSettings(next);
+      return next;
+    });
+  }, []);
+
   const handleProgressChange = useCallback((progress: number) => {
     const newIndex = Math.floor((progress / 100) * rsvp.chunks.length);
     rsvp.goToIndex(newIndex);
@@ -1141,6 +1149,8 @@ export function App() {
       onSaccadeLengthChange={handleSaccadeLengthChange}
       generationDifficulty={displaySettings.generationDifficulty}
       onGenerationDifficultyChange={handleGenerationDifficultyChange}
+      generationSweepReveal={displaySettings.generationSweepReveal}
+      onGenerationSweepRevealChange={handleGenerationSweepRevealChange}
     />
   );
 
@@ -1409,6 +1419,7 @@ export function App() {
               saccadeMergeShortFunctionWords={displaySettings.saccadeMergeShortFunctionWords}
               saccadeLength={displaySettings.saccadeLength}
               generationDifficulty={displaySettings.generationDifficulty}
+              generationSweepReveal={displaySettings.generationSweepReveal}
               generationMaskSeed={generationMaskSeed}
               generationReveal={generationRevealHeld}
             />

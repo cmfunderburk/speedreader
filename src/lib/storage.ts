@@ -75,6 +75,7 @@ export interface Settings {
   saccadeMergeShortFunctionWords: boolean;
   saccadeLength: number;
   generationDifficulty: GenerationDifficulty;
+  generationSweepReveal: boolean;
   lastSession?: { articleId: string; activity: Activity; displayMode: DisplayMode };
 }
 
@@ -110,6 +111,7 @@ const DEFAULT_SETTINGS: Settings = {
   saccadeMergeShortFunctionWords: false,
   saccadeLength: 10,
   generationDifficulty: 'normal',
+  generationSweepReveal: true,
 };
 
 const MIN_WPM = 100;
@@ -133,6 +135,10 @@ function parseComprehensionGeminiModel(value: unknown): ComprehensionGeminiModel
 
 function parseGenerationDifficulty(value: unknown): GenerationDifficulty {
   return value === 'hard' ? 'hard' : 'normal';
+}
+
+function parseGenerationSweepReveal(value: unknown): boolean {
+  return typeof value === 'boolean' ? value : DEFAULT_SETTINGS.generationSweepReveal;
 }
 
 function loadStorageSchemaVersion(): number {
@@ -413,6 +419,7 @@ export function loadSettings(): Settings {
     );
     settings.comprehensionGeminiModel = parseComprehensionGeminiModel(settings.comprehensionGeminiModel);
     settings.generationDifficulty = parseGenerationDifficulty(settings.generationDifficulty);
+    settings.generationSweepReveal = parseGenerationSweepReveal(settings.generationSweepReveal);
     settings.themePreference = settings.themePreference === 'light' || settings.themePreference === 'system'
       ? settings.themePreference
       : 'dark';
@@ -447,6 +454,7 @@ export function saveSettings(settings: Settings): void {
     ),
     comprehensionGeminiModel: parseComprehensionGeminiModel(settings.comprehensionGeminiModel),
     generationDifficulty: parseGenerationDifficulty(settings.generationDifficulty),
+    generationSweepReveal: parseGenerationSweepReveal(settings.generationSweepReveal),
   };
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(normalized));
 }

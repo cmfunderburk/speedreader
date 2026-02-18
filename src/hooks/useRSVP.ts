@@ -1,12 +1,14 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { Chunk, TokenMode, Article, SaccadePage, DisplayMode, PredictionStats, PredictionResult, RampCurve } from '../types';
 import { tokenize } from '../lib/tokenizer';
-import { tokenizeSaccade, tokenizeRecall, SACCADE_LINES_PER_PAGE, calculateSaccadeLineDuration } from '../lib/saccade';
+import { tokenizeSaccade, tokenizeRecall, calculateSaccadeLineDuration } from '../lib/saccade';
 import { calculateDisplayTime, getEffectiveWpm } from '../lib/rsvp';
 import { mapChunkIndexByProgress } from '../lib/indexMapping';
 import { updateArticlePosition, updateArticlePredictionPosition } from '../lib/storage';
 import { isExactMatch, isWordKnown } from '../lib/levenshtein';
 import { usePlaybackTimer } from './usePlaybackTimer';
+
+const PACED_LINE_DEFAULT_LINES_PER_PAGE = 25;
 
 interface UseRSVPOptions {
   initialWpm?: number;
@@ -100,7 +102,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
   const [customCharWidth, setCustomCharWidthState] = useState(initialCustomCharWidth);
   const [saccadePages, setSaccadePages] = useState<SaccadePage[]>([]);
   const [showPacer, setShowPacer] = useState(true);
-  const [linesPerPage, setLinesPerPageState] = useState(SACCADE_LINES_PER_PAGE);
+  const [linesPerPage, setLinesPerPageState] = useState(PACED_LINE_DEFAULT_LINES_PER_PAGE);
   const [predictionStats, setPredictionStats] = useState<PredictionStats>({
     totalWords: 0,
     exactMatches: 0,
@@ -215,7 +217,7 @@ export function useRSVP(options: UseRSVPOptions = {}): UseRSVPReturn {
     dm: DisplayMode,
     tm: TokenMode,
     sacLen: number,
-    pageLines: number = SACCADE_LINES_PER_PAGE,
+    pageLines: number = PACED_LINE_DEFAULT_LINES_PER_PAGE,
     figureAssetBaseUrl?: string,
     sourcePath?: string
   ): { chunks: Chunk[]; pages: SaccadePage[] } => {

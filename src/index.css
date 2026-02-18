@@ -406,6 +406,17 @@ button {
   border-bottom: 1px solid currentColor;
 }
 
+.generation-grid-text {
+  display: inline-block;
+  white-space: pre;
+  line-height: inherit;
+}
+
+.generation-grid-cell {
+  display: inline-block;
+  width: 1ch;
+}
+
 /* Inline fixation-point highlights */
 .saccade-fixation {
   color: var(--saccade-ovp-color);

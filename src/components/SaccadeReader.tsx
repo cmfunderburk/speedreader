@@ -25,6 +25,7 @@ interface SaccadeReaderProps {
   saccadeLength?: number;
   generationMode?: boolean;
   generationDifficulty?: GenerationDifficulty;
+  generationSweepReveal?: boolean;
   generationMaskSeed?: number;
   generationReveal?: boolean;
 }
@@ -48,6 +49,7 @@ export function SaccadeReader({
   saccadeLength,
   generationMode = false,
   generationDifficulty = 'normal',
+  generationSweepReveal = true,
   generationMaskSeed = 0,
   generationReveal = false,
 }: SaccadeReaderProps) {
@@ -177,17 +179,30 @@ export function SaccadeReader({
   return (
     <div className="reader saccade-reader" ref={readerRef}>
       <div className="saccade-page" ref={pageRef} style={pageStyle}>
-        {page.lines.map((line, lineIndex) => (
+        {page.lines.map((line, lineIndex) => {
+          const isMaskableLine = line.type !== 'figure' && line.type !== 'blank';
+          // In generation sweep-reveal mode, previously swept lines stay revealed.
+          // Only the active line gets progressive unmasking.
+          const keepLineRevealed = generationMode
+            && generationSweepReveal
+            && showPacer
+            && !generationReveal
+            && isMaskableLine
+            && lineIndex < currentLineIndex;
+          const shouldMaskLine = generationMode && !generationReveal && isMaskableLine && !keepLineRevealed;
+
+          return (
           <SaccadeLineComponent
             key={lineIndex}
             line={line}
             lineIndex={lineIndex}
             displayText={
-              generationMode && !generationReveal && line.type !== 'figure' && line.type !== 'blank'
+              shouldMaskLine
                 ? maskGenerationLine(line.text, generationDifficulty, generationMaskSeed, lineIndex)
                 : line.text
             }
-            renderGenerationMaskSlots={generationMode && !generationReveal}
+            renderGenerationMaskSlots={shouldMaskLine}
+            generationSweepReveal={generationMode && generationSweepReveal}
             isActiveLine={lineIndex === currentLineIndex}
             isPlaying={isPlaying}
             isFutureLine={showPacer && lineIndex > currentLineIndex}
@@ -201,7 +216,8 @@ export function SaccadeReader({
             saccadeLength={saccadeLength}
             onOpenFigure={handleOpenFigure}
           />
-        ))}
+          );
+        })}
       </div>
       {magnifiedFigure && (
         <div className="saccade-figure-lightbox" onClick={() => setMagnifiedFigure(null)}>
@@ -234,6 +250,7 @@ export interface SaccadeLineProps {
   lineIndex: number;
   displayText?: string;
   renderGenerationMaskSlots?: boolean;
+  generationSweepReveal?: boolean;
   isActiveLine: boolean;
   isPlaying: boolean;
   isFutureLine: boolean;
@@ -253,6 +270,7 @@ export const SaccadeLineComponent = memo(function SaccadeLineComponent({
   lineIndex,
   displayText,
   renderGenerationMaskSlots = false,
+  generationSweepReveal = false,
   isActiveLine,
   isPlaying,
   isFutureLine,
@@ -305,6 +323,11 @@ export const SaccadeLineComponent = memo(function SaccadeLineComponent({
   }, [fixations, isBlank, isFigure, lineText, pacerStyle, useWordFocus, wordFocusData.targets]);
   const useSweepBar = !isBlank && !isFigure && showPacer && pacerStyle === 'sweep' && isActiveLine && lineDuration > 0;
   const useFocusTargets = !isBlank && !isFigure && showPacer && pacerStyle === 'focus' && isActiveLine && lineDuration > 0 && focusTargets.length > 0;
+  const useGenerationSweepReveal = generationSweepReveal && renderGenerationMaskSlots && useSweepBar && lineText !== line.text;
+  const revealFrameRef = useRef<number | null>(null);
+  const revealStartTimeRef = useRef<number | null>(null);
+  const revealAccumulatedRef = useRef(0);
+  const [generationRevealElapsedMs, setGenerationRevealElapsedMs] = useState(0);
   const focusTimingTargets = useMemo(() => (
     useFocusTargets && focusTarget !== 'word'
       ? computeFixationTimingTargets(lineText, focusTargets)
@@ -378,6 +401,69 @@ export const SaccadeLineComponent = memo(function SaccadeLineComponent({
     useFocusTargets && 'saccade-line-focus',
   ].filter(Boolean).join(' ');
 
+  useEffect(() => {
+    if (!useGenerationSweepReveal) {
+      if (revealFrameRef.current !== null) {
+        cancelAnimationFrame(revealFrameRef.current);
+        revealFrameRef.current = null;
+      }
+      revealStartTimeRef.current = null;
+      revealAccumulatedRef.current = 0;
+      setGenerationRevealElapsedMs(0);
+      return;
+    }
+
+    const maxDuration = Math.max(0, lineDuration);
+    const tick = (now: number) => {
+      if (!useGenerationSweepReveal || !isPlaying) return;
+      if (revealStartTimeRef.current === null) {
+        revealStartTimeRef.current = now;
+      }
+      const elapsed = revealAccumulatedRef.current + (now - revealStartTimeRef.current);
+      const clamped = Math.min(maxDuration, elapsed);
+      setGenerationRevealElapsedMs(clamped);
+      if (clamped >= maxDuration) {
+        revealFrameRef.current = null;
+        return;
+      }
+      revealFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    if (isPlaying) {
+      if (revealFrameRef.current !== null) {
+        cancelAnimationFrame(revealFrameRef.current);
+      }
+      revealFrameRef.current = requestAnimationFrame(tick);
+    } else {
+      if (revealFrameRef.current !== null) {
+        cancelAnimationFrame(revealFrameRef.current);
+        revealFrameRef.current = null;
+      }
+      if (revealStartTimeRef.current !== null) {
+        const now = performance.now();
+        revealAccumulatedRef.current = Math.min(
+          maxDuration,
+          revealAccumulatedRef.current + (now - revealStartTimeRef.current)
+        );
+        revealStartTimeRef.current = null;
+      }
+      setGenerationRevealElapsedMs(revealAccumulatedRef.current);
+    }
+
+    return () => {
+      if (revealFrameRef.current !== null) {
+        cancelAnimationFrame(revealFrameRef.current);
+        revealFrameRef.current = null;
+      }
+    };
+  }, [isPlaying, lineDuration, useGenerationSweepReveal]);
+
+  const generationRevealCharCount = useMemo(() => {
+    if (!useGenerationSweepReveal || textLength <= 0 || lineDuration <= 0) return 0;
+    const ratio = Math.max(0, Math.min(1, generationRevealElapsedMs / lineDuration));
+    return Math.max(0, Math.min(textLength, Math.floor(ratio * textLength)));
+  }, [generationRevealElapsedMs, lineDuration, textLength, useGenerationSweepReveal]);
+
   if (isBlank) {
     return (
       <div className="saccade-line">
@@ -443,14 +529,49 @@ export const SaccadeLineComponent = memo(function SaccadeLineComponent({
           }}
         />
       )}
-      {focusConfig
-        ? renderLineTextWithFocus(lineText, isHeading, showStaticOVP || focusDecolors, fixations, focusConfig, decolorConfig, renderGenerationMaskSlots)
-        : renderLineText(lineText, isHeading, showStaticOVP || sweepDecolors, fixations, decolorConfig, renderGenerationMaskSlots)}
+      {useGenerationSweepReveal ? (
+        renderGenerationSweepRevealLine({
+          isHeading,
+          maskedText: lineText,
+          originalText: line.text,
+          revealCharCount: generationRevealCharCount,
+        })
+      ) : (
+        focusConfig
+          ? renderLineTextWithFocus(lineText, isHeading, showStaticOVP || focusDecolors, fixations, focusConfig, decolorConfig, renderGenerationMaskSlots)
+          : renderLineText(lineText, isHeading, showStaticOVP || sweepDecolors, fixations, decolorConfig, renderGenerationMaskSlots)
+      )}
     </div>
   );
 });
 
 SaccadeLineComponent.displayName = 'SaccadeLineComponent';
+
+function renderGenerationSweepRevealLine(config: {
+  isHeading: boolean;
+  maskedText: string;
+  originalText: string;
+  revealCharCount: number;
+}): JSX.Element {
+  const className = config.isHeading ? 'saccade-heading' : 'saccade-body';
+  const chars: JSX.Element[] = [];
+  const revealLimit = Math.max(0, Math.min(config.maskedText.length, config.revealCharCount));
+
+  for (let i = 0; i < config.maskedText.length; i++) {
+    const char = i < revealLimit ? config.originalText[i] : config.maskedText[i];
+    if (char === '_') {
+      chars.push(<span key={`mask-${i}`} className="generation-grid-cell generation-mask-slot" aria-hidden="true" />);
+      continue;
+    }
+    chars.push(
+      <span key={`char-${i}`} className="generation-grid-cell">
+        {char === ' ' ? '\u00A0' : char}
+      </span>
+    );
+  }
+
+  return <span className={`${className} generation-grid-text`}>{chars}</span>;
+}
 
 /**
  * Generate per-ORP @keyframes that transition from amber to plain text

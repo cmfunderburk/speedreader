@@ -43,6 +43,14 @@ describe('useRSVP — load and reset', () => {
     expect(result.current.article).toBeTruthy();
   });
 
+  it('defaults line-paced modes to 25 lines per page', () => {
+    const { result } = renderHook(() =>
+      useRSVP({ initialMode: 'word', initialDisplayMode: 'saccade' })
+    );
+
+    expect(result.current.linesPerPage).toBe(25);
+  });
+
   it('resumes from saved readPosition', () => {
     const article = makeArticle({ readPosition: 5 });
 

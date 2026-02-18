@@ -158,6 +158,7 @@ describe('storage-helpers with real storage functions', () => {
     expect(defaults.predictionPreviewSentenceCount).toBe(2);
     expect(defaults.comprehensionGeminiModel).toBe('gemini-3-flash-preview');
     expect(defaults.generationDifficulty).toBe('normal');
+    expect(defaults.generationSweepReveal).toBe(true);
     expect(defaults.themePreference).toBe('dark');
     expect(defaults.wpmByActivity['paced-reading']).toBe(defaults.defaultWpm);
     expect(defaults.wpmByActivity['active-recall']).toBe(defaults.defaultWpm);
@@ -170,6 +171,7 @@ describe('storage-helpers with real storage functions', () => {
       predictionPreviewSentenceCount: 5,
       comprehensionGeminiModel: 'gemini-3-pro-preview',
       generationDifficulty: 'hard',
+      generationSweepReveal: false,
       themePreference: 'system',
       wpmByActivity: {
         ...defaults.wpmByActivity,
@@ -182,6 +184,7 @@ describe('storage-helpers with real storage functions', () => {
     expect(loaded.predictionPreviewSentenceCount).toBe(5);
     expect(loaded.comprehensionGeminiModel).toBe('gemini-3-pro-preview');
     expect(loaded.generationDifficulty).toBe('hard');
+    expect(loaded.generationSweepReveal).toBe(false);
     expect(loaded.themePreference).toBe('system');
     expect(loaded.wpmByActivity.training).toBe(460);
   });
@@ -200,6 +203,7 @@ describe('storage-helpers with real storage functions', () => {
     expect(loaded.wpmByActivity['comprehension-check']).toBe(360);
     expect(loaded.comprehensionGeminiModel).toBe('gemini-3-flash-preview');
     expect(loaded.generationDifficulty).toBe('normal');
+    expect(loaded.generationSweepReveal).toBe(true);
   });
 
   it('normalizes unknown comprehension model to default', () => {
@@ -226,6 +230,19 @@ describe('storage-helpers with real storage functions', () => {
     saveSettings(loaded);
     const persisted = JSON.parse(localStorage.getItem('speedread_settings') || '{}');
     expect(persisted.generationDifficulty).toBe('normal');
+  });
+
+  it('normalizes unknown generation sweep reveal to default', () => {
+    localStorage.setItem('speedread_settings', JSON.stringify({
+      generationSweepReveal: 'yes',
+    }));
+
+    const loaded = loadSettings();
+    expect(loaded.generationSweepReveal).toBe(true);
+
+    saveSettings(loaded);
+    const persisted = JSON.parse(localStorage.getItem('speedread_settings') || '{}');
+    expect(persisted.generationSweepReveal).toBe(true);
   });
 
   it('runs schema migration and persists normalized legacy settings/drill state', () => {

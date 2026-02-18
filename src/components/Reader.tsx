@@ -26,6 +26,7 @@ interface ReaderProps {
   saccadeMergeShortFunctionWords?: boolean;
   saccadeLength?: number;
   generationDifficulty?: GenerationDifficulty;
+  generationSweepReveal?: boolean;
   generationMaskSeed?: number;
   generationReveal?: boolean;
 }
@@ -46,6 +47,7 @@ export function Reader({
   saccadeMergeShortFunctionWords,
   saccadeLength,
   generationDifficulty = 'normal',
+  generationSweepReveal = true,
   generationMaskSeed = 0,
   generationReveal = false,
 }: ReaderProps) {
@@ -63,6 +65,7 @@ export function Reader({
         wpm={wpm}
         generationMode
         generationDifficulty={generationDifficulty}
+        generationSweepReveal={generationSweepReveal}
         generationMaskSeed={generationMaskSeed}
         generationReveal={generationReveal}
         saccadeShowOVP={false}
