@@ -336,10 +336,23 @@ export function App() {
     return settings.wpmByActivity[activity] ?? settings.defaultWpm;
   }, [settings.defaultWpm, settings.wpmByActivity]);
 
+  const updateDisplaySettings = useCallback((updater: (prev: Settings) => Settings) => {
+    setDisplaySettings((prev) => {
+      const next = updater(prev);
+      if (next === prev) return prev;
+      saveSettings(next);
+      return next;
+    });
+  }, []);
+
+  const patchDisplaySettings = useCallback((patch: Partial<Settings>) => {
+    updateDisplaySettings((prev) => ({ ...prev, ...patch }));
+  }, [updateDisplaySettings]);
+
   const setActivityWpm = useCallback((activity: Activity, nextWpm: number) => {
     const clamped = clampWpm(nextWpm);
     rsvp.setWpm(clamped);
-    setDisplaySettings(prev => {
+    updateDisplaySettings((prev) => {
       const next: Settings = {
         ...prev,
         wpmByActivity: {
@@ -350,10 +363,9 @@ export function App() {
       if (activity === 'paced-reading') {
         next.defaultWpm = clamped;
       }
-      saveSettings(next);
       return next;
     });
-  }, [rsvp]);
+  }, [rsvp, updateDisplaySettings]);
 
   const syncWpmForActivity = useCallback((activity: Activity) => {
     rsvp.setWpm(getActivityWpm(activity));
@@ -596,9 +608,8 @@ export function App() {
   // --- Settings handlers (unchanged) ---
 
   const handleSettingsChange = useCallback((newSettings: Settings) => {
-    setDisplaySettings(newSettings);
-    saveSettings(newSettings);
-  }, []);
+    updateDisplaySettings(() => newSettings);
+  }, [updateDisplaySettings]);
 
   const handleComprehensionApiKeyChange = useCallback(async (apiKey: string) => {
     const normalizedApiKey = apiKey.trim();
@@ -609,84 +620,44 @@ export function App() {
 
   const handleRampEnabledChange = useCallback((enabled: boolean) => {
     rsvp.setRampEnabled(enabled);
-    setDisplaySettings(prev => {
-      const next = { ...prev, rampEnabled: enabled };
-      saveSettings(next);
-      return next;
-    });
-  }, [rsvp]);
+    patchDisplaySettings({ rampEnabled: enabled });
+  }, [patchDisplaySettings, rsvp]);
 
   const handleAlternateColorsChange = useCallback((enabled: boolean) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, rsvpAlternateColors: enabled };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ rsvpAlternateColors: enabled });
+  }, [patchDisplaySettings]);
 
   const handleShowORPChange = useCallback((enabled: boolean) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, rsvpShowORP: enabled };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ rsvpShowORP: enabled });
+  }, [patchDisplaySettings]);
 
   const handleSaccadeShowOVPChange = useCallback((enabled: boolean) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, saccadeShowOVP: enabled };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ saccadeShowOVP: enabled });
+  }, [patchDisplaySettings]);
 
   const handleSaccadePacerStyleChange = useCallback((style: SaccadePacerStyle) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, saccadePacerStyle: style, saccadeShowSweep: style === 'sweep' };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ saccadePacerStyle: style, saccadeShowSweep: style === 'sweep' });
+  }, [patchDisplaySettings]);
 
   const handleSaccadeFocusTargetChange = useCallback((target: SaccadeFocusTarget) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, saccadeFocusTarget: target };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ saccadeFocusTarget: target });
+  }, [patchDisplaySettings]);
 
   const handleSaccadeMergeShortFunctionWordsChange = useCallback((enabled: boolean) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, saccadeMergeShortFunctionWords: enabled };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ saccadeMergeShortFunctionWords: enabled });
+  }, [patchDisplaySettings]);
 
   const handleSaccadeLengthChange = useCallback((length: number) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, saccadeLength: length };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ saccadeLength: length });
+  }, [patchDisplaySettings]);
 
   const handleGenerationDifficultyChange = useCallback((difficulty: GenerationDifficulty) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, generationDifficulty: difficulty };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ generationDifficulty: difficulty });
+  }, [patchDisplaySettings]);
 
   const handleGenerationSweepRevealChange = useCallback((enabled: boolean) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, generationSweepReveal: enabled };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ generationSweepReveal: enabled });
+  }, [patchDisplaySettings]);
 
   const handleProgressChange = useCallback((progress: number) => {
     const newIndex = Math.floor((progress / 100) * rsvp.chunks.length);
@@ -875,12 +846,8 @@ export function App() {
   // --- Navigation handlers ---
 
   const saveLastSession = useCallback((articleId: string, activity: Activity, displayMode: DisplayMode) => {
-    setDisplaySettings(prev => {
-      const next = { ...prev, lastSession: { articleId, activity, displayMode } };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
+    patchDisplaySettings({ lastSession: { articleId, activity, displayMode } });
+  }, [patchDisplaySettings]);
 
   const applySessionLaunchPlan = useCallback((plan: ReturnType<typeof planContinueSession>) => {
     if (plan.clearSnapshot) {
