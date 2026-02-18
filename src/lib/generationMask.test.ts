@@ -91,4 +91,15 @@ describe('generationMask', () => {
       });
     }
   });
+
+  it('masks each hyphen-separated word independently', () => {
+    const line = 'practice-practice-practice';
+    const masked = maskGenerationLine(line, 'normal', 1, 0);
+    const segments = masked.split('-');
+
+    expect(segments).toHaveLength(3);
+    segments.forEach((segment) => {
+      expect(maskCount(segment)).toBeGreaterThan(0);
+    });
+  });
 });

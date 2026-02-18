@@ -24,6 +24,9 @@ interface MaskContext {
   titleCaseLine: boolean;
 }
 
+const HYPHEN_SEPARATOR_REGEX = /[-\u2010\u2011\u2012\u2013\u2014]/;
+const HYPHEN_SPLIT_REGEX = /([-\u2010\u2011\u2012\u2013\u2014]+)/;
+
 const DIFFICULTY_PROFILES: Record<GenerationDifficulty, MaskProfile> = {
   normal: { maxMaskRatio: 0.25 },
   hard: { maxMaskRatio: 0.4 },
@@ -151,7 +154,7 @@ function isMaskEligible(core: string, sentenceInitial: boolean, context: MaskCon
   return true;
 }
 
-function maskCoreWord(core: string, maxMaskRatio: number, seed: string): string {
+function maskSingleCoreWord(core: string, maxMaskRatio: number, seed: string): string {
   const letters: number[] = [];
   for (let i = 0; i < core.length; i++) {
     if (/[A-Za-z]/.test(core[i])) letters.push(i);
@@ -177,6 +180,20 @@ function maskCoreWord(core: string, maxMaskRatio: number, seed: string): string 
   }
 
   return chars.join('');
+}
+
+function maskCoreWord(core: string, maxMaskRatio: number, seed: string): string {
+  if (!HYPHEN_SEPARATOR_REGEX.test(core)) {
+    return maskSingleCoreWord(core, maxMaskRatio, seed);
+  }
+
+  const segments = core.split(HYPHEN_SPLIT_REGEX);
+  return segments
+    .map((segment, segmentIndex) => {
+      if (segmentIndex % 2 === 1) return segment;
+      return maskSingleCoreWord(segment, maxMaskRatio, `${seed}|seg:${segmentIndex}`);
+    })
+    .join('');
 }
 
 function selectNonConsecutiveIndices(candidates: number[], desiredCount: number, seed: string): Set<number> {

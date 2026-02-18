@@ -119,6 +119,7 @@ export function HomeScreen({
           <div className="activity-card-modes">
             <span className="activity-card-mode">RSVP</span>
             <span className="activity-card-mode">Saccade</span>
+            <span className="activity-card-mode">Generation</span>
           </div>
         </button>
 

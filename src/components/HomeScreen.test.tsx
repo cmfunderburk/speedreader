@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HomeScreen } from './HomeScreen';
 import type { ComprehensionAttempt } from '../types';
 
@@ -44,7 +44,24 @@ function makeAttempt(overrides: Partial<ComprehensionAttempt> = {}): Comprehensi
   };
 }
 
+afterEach(() => {
+  cleanup();
+});
+
 describe('HomeScreen', () => {
+  it('shows generation mode on the paced reading card', () => {
+    render(<HomeScreen {...baseProps} />);
+
+    const pacedReadingHeading = screen.getByRole('heading', { name: 'Paced Reading' });
+    const pacedReadingCard = pacedReadingHeading.closest('button');
+    expect(pacedReadingCard).toBeTruthy();
+
+    const pacedReading = within(pacedReadingCard as HTMLButtonElement);
+    expect(pacedReading.getByText('RSVP')).toBeTruthy();
+    expect(pacedReading.getByText('Saccade')).toBeTruthy();
+    expect(pacedReading.getByText('Generation')).toBeTruthy();
+  });
+
   it('toggles and renders comprehension history attempts', () => {
     render(
       <HomeScreen
