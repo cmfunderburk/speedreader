@@ -131,7 +131,8 @@ function parseComprehensionGeminiModel(value: unknown): ComprehensionGeminiModel
 }
 
 function parseGenerationDifficulty(value: unknown): GenerationDifficulty {
-  return value === 'hard' ? 'hard' : 'normal';
+  if (value === 'hard' || value === 'recall') return value;
+  return 'normal';
 }
 
 function parseGenerationSweepReveal(value: unknown): boolean {

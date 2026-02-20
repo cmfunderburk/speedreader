@@ -2,6 +2,7 @@ import type { GenerationDifficulty } from '../types';
 import { FUNCTION_WORDS } from './tokenizer';
 
 interface MaskProfile {
+  strategy: 'ratio' | 'first-last';
   maxMaskRatio: number;
 }
 
@@ -28,8 +29,9 @@ const HYPHEN_SEPARATOR_REGEX = /[-\u2010\u2011\u2012\u2013\u2014]/;
 const HYPHEN_SPLIT_REGEX = /([-\u2010\u2011\u2012\u2013\u2014]+)/;
 
 const DIFFICULTY_PROFILES: Record<GenerationDifficulty, MaskProfile> = {
-  normal: { maxMaskRatio: 0.25 },
-  hard: { maxMaskRatio: 0.4 },
+  normal: { strategy: 'ratio', maxMaskRatio: 0.25 },
+  hard: { strategy: 'ratio', maxMaskRatio: 0.4 },
+  recall: { strategy: 'first-last', maxMaskRatio: 1 },
 };
 
 function hashToUnitInterval(input: string): number {
@@ -196,6 +198,46 @@ function maskCoreWord(core: string, maxMaskRatio: number, seed: string): string 
     .join('');
 }
 
+function maskSingleCoreWordToFirstLast(core: string): string {
+  const letters: number[] = [];
+  for (let i = 0; i < core.length; i++) {
+    if (/[A-Za-z]/.test(core[i])) letters.push(i);
+  }
+  if (letters.length <= 2) return core;
+
+  const first = letters[0];
+  const last = letters[letters.length - 1];
+  const chars = [...core];
+
+  for (const letterIndex of letters) {
+    if (letterIndex === first || letterIndex === last) continue;
+    chars[letterIndex] = '_';
+  }
+
+  return chars.join('');
+}
+
+function maskCoreWordToFirstLast(core: string): string {
+  if (!HYPHEN_SEPARATOR_REGEX.test(core)) {
+    return maskSingleCoreWordToFirstLast(core);
+  }
+
+  const segments = core.split(HYPHEN_SPLIT_REGEX);
+  return segments
+    .map((segment, segmentIndex) => {
+      if (segmentIndex % 2 === 1) return segment;
+      return maskSingleCoreWordToFirstLast(segment);
+    })
+    .join('');
+}
+
+function maskCoreWordByProfile(core: string, profile: MaskProfile, seed: string): string {
+  if (profile.strategy === 'first-last') {
+    return maskCoreWordToFirstLast(core);
+  }
+  return maskCoreWord(core, profile.maxMaskRatio, seed);
+}
+
 function selectNonConsecutiveIndices(candidates: number[], desiredCount: number, seed: string): Set<number> {
   if (candidates.length === 0 || desiredCount <= 0) return new Set();
 
@@ -292,15 +334,25 @@ export function maskGenerationLine(
     result += lineText.slice(cursor, token.start);
 
     const parts = partsByTokenIndex.get(tokenIndex);
-    if (!parts || !isMaskEligible(parts.core, token.sentenceInitial, { tokenIndex, partsByTokenIndex, titleCaseLine })) {
+    if (!parts) {
       result += token.raw;
       cursor = token.end;
       continue;
     }
 
-    const maskedCore = maskCoreWord(
+    const maskEligible = difficulty === 'recall'
+      ? normalizeAlpha(parts.core).length > 0
+      : isMaskEligible(parts.core, token.sentenceInitial, { tokenIndex, partsByTokenIndex, titleCaseLine });
+
+    if (!maskEligible) {
+      result += token.raw;
+      cursor = token.end;
+      continue;
+    }
+
+    const maskedCore = maskCoreWordByProfile(
       parts.core,
-      profile.maxMaskRatio,
+      profile,
       `${seed}|${lineIndex}|${tokenIndex}|${parts.core}`
     );
     result += `${parts.leading}${maskedCore}${parts.trailing}`;

@@ -360,6 +360,7 @@ export function ReaderControls({
               >
                 <option value="normal">Normal</option>
                 <option value="hard">Hard</option>
+                <option value="recall">Recall</option>
               </select>
             </label>
             <span className="control-label">Hold R to reveal</span>

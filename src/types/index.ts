@@ -14,7 +14,7 @@ export type PredictionPreviewMode = 'sentences' | 'unlimited';
 export type ThemePreference = 'dark' | 'light' | 'system';
 export type SaccadePacerStyle = 'sweep' | 'focus';
 export type SaccadeFocusTarget = 'fixation' | 'word';
-export type GenerationDifficulty = 'normal' | 'hard';
+export type GenerationDifficulty = 'normal' | 'hard' | 'recall';
 
 export const PREDICTION_LINE_WIDTHS: Record<PredictionLineWidth, number> = {
   narrow: 50,

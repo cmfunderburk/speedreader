@@ -81,6 +81,15 @@ describe('generationMask', () => {
     expect(hardUnderscores).toBeGreaterThan(normalUnderscores);
   });
 
+  it('masks recall difficulty to first/last letters for every word', () => {
+    const line = 'we discussed entropy with Alice and NASA in 2026';
+    const maskedA = maskGenerationLine(line, 'recall', 1, 0);
+    const maskedB = maskGenerationLine(line, 'recall', 99, 0);
+
+    expect(maskedA).toBe(maskedB);
+    expect(maskedA).toBe('we d_______d e_____y w__h A___e a_d N__A in 2026');
+  });
+
   it('never places consecutive masked letters in a word', () => {
     const line = 'retrieval substantially unconventional groundbreaking methodologies';
     for (let seed = 0; seed < 24; seed++) {

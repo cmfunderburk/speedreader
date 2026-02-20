@@ -28,8 +28,8 @@ The design goal is to reduce friction between reading and retention practice by 
 
 ### Generation
 - Line-paced reading with selective letter masking cues inspired by generation-effect tasks.
-- Masking excludes function words, proper nouns, acronyms, and numbers.
-- Difficulty presets (`Normal`, `Hard`) adjust per-word mask limits (`<=25%` / `<=40%`).
+- Masking excludes function words, proper nouns, acronyms, and numbers in Normal/Hard; Recall masks every word down to first/last letters.
+- Difficulty presets (`Normal`, `Hard`, `Recall`) adjust per-word masking (`<=25%`, `<=40%`, or first/last letters only).
 - Optional `Sweep reveal` progressively unmasks letters as the pacer passes.
 - Hold `R` to temporarily reveal full text; pacing pauses while held.
 - Uses the same page navigation and passage-capture workflow as saccade mode.
